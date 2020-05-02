@@ -104,8 +104,19 @@ func TestMul(t *testing.T) {
 	//Following fails if no reduction of polynomial degree is done during multiplication
 	fun(aSquaredShares, aSquaredShares) //7^4 % 11 = 3
 	fun(bSquaredShares, bSquaredShares) //9^4 % 11 = 5
-
 	fun(aSquaredShares, bSquaredShares) //7^2 * 9^2 % 11 = 9
 	fun(aTimesBShares, aTimesBShares) //7^2 * 9^2 % 11 = 9
 }
 
+
+func TestReconstructionVector(t *testing.T) {
+	r := reconstructionVector(big.NewInt(11), 3, 4, 5)
+	test := func(index, rIndex int64) {
+		rI, contains := r[index]
+		if !contains {t.Errorf("Does not contain r%d", index)}
+		if rI.Int64() != rIndex {t.Errorf("r%d should be %d was %d", index, rIndex, rI.Int64())}
+	}
+	test(3, 10)
+	test(4, 7)
+	test(5, 6)
+}
