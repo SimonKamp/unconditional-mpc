@@ -6,7 +6,7 @@ import (
 )
 
 func TestShare(t *testing.T) {
-	setting := NewSS(11, 3, 1)
+	setting := NewSS(11, 1, 3)
 	shares := setting.Share(big.NewInt(7))
 	reconstructed := setting.Reconstruct(shares)
 	if reconstructed.Cmp(big.NewInt(7)) != 0 {
@@ -61,7 +61,7 @@ func TestLagrangeInterpolationAtZero(t *testing.T) {
 }
 
 func TestAdd(t *testing.T) {
-	setting := NewSS(11, 3, 1)
+	setting := NewSS(11, 1, 3)
 	aShares := setting.Share(big.NewInt(7))
 	bShares := setting.Share(big.NewInt(9))
 	aPlusBShares := setting.Add(aShares, bShares)
@@ -72,7 +72,7 @@ func TestAdd(t *testing.T) {
 }
 
 func TestScale(t *testing.T) {
-	setting := NewSS(11, 3, 1)
+	setting := NewSS(11, 1, 3)
 	shares := setting.Share(big.NewInt(7))
 	scaled := setting.Scale(big.NewInt(2), shares)
 	reconstructed := setting.Reconstruct(scaled)
@@ -82,7 +82,7 @@ func TestScale(t *testing.T) {
 }
 
 func TestMul(t *testing.T) {
-	setting := NewSS(11, 3, 1)
+	setting := NewSS(11, 1, 3)
 	fun := func(aShares, bShares []Point) []Point {
 		aTimesBShares := setting.Mul(aShares, bShares)
 		a := setting.Reconstruct(aShares)
@@ -111,7 +111,7 @@ func TestMul(t *testing.T) {
 
 func TestReconstructionVector(t *testing.T) {
 	r := reconstructionVector(big.NewInt(11), 3, 4, 5)
-	test := func(index, rIndex int64) {
+	test := func(index int, rIndex int64) {
 		rI, contains := r[index]
 		if !contains {t.Errorf("Does not contain r%d", index)}
 		if rI.Int64() != rIndex {t.Errorf("r%d should be %d was %d", index, rIndex, rI.Int64())}

@@ -7,18 +7,18 @@ import (
 	"strconv"
 )
 
-//Point represents a point on a polynomial, i.e. the share of party x
+//Point represents a point on a polynomial, i.e. the share of party X
 type Point struct {
-	x int64
-	y *big.Int
+	X int
+	Y *big.Int
 }
 
-func newPoint(x, y int) Point {
-	return Point{x: int64(x), y: big.NewInt(int64(y))}
+func newPoint(X, Y int) Point {
+	return Point{X: X, Y: big.NewInt(int64(Y))}
 }
 
 func (p Point) String() string {
-	return "(" + strconv.FormatInt(p.x, 10) + "," + p.y.String() + ")"
+	return "(" + strconv.FormatInt(int64(p.X), 10) + "," + p.Y.String() + ")"
 }
 
 type polynomial []*big.Int
@@ -26,27 +26,27 @@ type polynomial []*big.Int
 //SecretSharingScheme ...
 type SecretSharingScheme struct {
 	p *big.Int
-	t int
+	threshold int
 	n int
 }
 
 //NewSS constructs a secret sharing scheme with initialised reconstruction vector
-func NewSS(p int64, n, t int) SecretSharingScheme {
+func NewSS(p int64, threshold, n int) SecretSharingScheme {
 	ss := SecretSharingScheme{}
 	ss.p = big.NewInt(p)
 	ss.n = n
-	ss.t = t
+	ss.threshold = threshold
 	return ss
 }
 
-var standardSetting = SecretSharingScheme { p : big.NewInt(5), t : 1, n : 3}
+var standardSetting = SecretSharingScheme { p : big.NewInt(5), threshold : 1, n : 3}
 
 //Share splits a secret into shares (points)
 func (ss *SecretSharingScheme) Share(secret *big.Int) []Point {
 	//Draw random polynomial h
-	h := make([]*big.Int, ss.t + 1)
+	h := make([]*big.Int, ss.threshold + 1)
 	h[0] = secret
-	for coefficient := 1; coefficient <= ss.t; coefficient++ {
+	for coefficient := 1; coefficient <= ss.threshold; coefficient++ {
 		randBigInt, _ := rand.Int(rand.Reader, ss.p )
 		h[coefficient] = randBigInt
 	}
@@ -55,18 +55,18 @@ func (ss *SecretSharingScheme) Share(secret *big.Int) []Point {
 	shares := make([]Point, ss.n)
 	for i := 1; i <= ss.n; i++ {
 		shares[i-1] = Point{
-			x: int64(i), 
-			y: hornersEvaluatePolynomialAt(h, int64(i), ss.p)}
+			X: i, 
+			Y: hornersEvaluatePolynomialAt(h, int64(i), ss.p)}
 	}
 
 	return shares
 }
 
-//Reconstruct extracts the secret from t or more shares
+//Reconstruct extracts the secret from threshold or more shares
 func (ss *SecretSharingScheme)Reconstruct(shares []Point) *big.Int {
 	k := len(shares)
 
-	if k < ss.t + 1 {
+	if k < ss.threshold + 1 {
 		fmt.Println("Not enough shares to reconstruct")
 		return big.NewInt(0)
 	}
@@ -82,9 +82,9 @@ func (ss *SecretSharingScheme)Add(aShares, bShares []Point) []Point {
 	aPlusBShares := make([]Point, len(aShares))
 	
 	for i := range(aShares) {
-		x := aShares[i].x
-		y := new(big.Int).Add(aShares[i].y, bShares[i].y)
-		aPlusBShares[i] = Point{x : x, y : y}
+		X := aShares[i].X
+		Y := new(big.Int).Add(aShares[i].Y, bShares[i].Y)
+		aPlusBShares[i] = Point{X : X, Y : Y}
 	}
 
 	return aPlusBShares
@@ -95,8 +95,8 @@ func (ss *SecretSharingScheme)Scale(scalar *big.Int, shares []Point) []Point {
 	scaledShares := make([]Point, len(shares))
 
 	for _, share := range(shares) {
-		scaled := new(big.Int).Mul(scalar, share.y)
-		scaledShares[share.x - 1] = Point{x : share.x, y : scaled}
+		scaled := new(big.Int).Mul(scalar, share.Y)
+		scaledShares[share.X - 1] = Point{X : share.X, Y : scaled}
 	}
 
 	return scaledShares
@@ -114,18 +114,18 @@ func (ss *SecretSharingScheme)Mul(aShares, bShares []Point) []Point {
 	//Step 1: Each party locally computes the product of its two shares
 	aTimesBShares := make([]Point, len(aShares))
 	for party := range(aShares) {
-		x := aShares[party].x
-		y := new(big.Int).Mul(aShares[party].y, bShares[party].y)
-		aTimesBShares[party] = Point{x : x, y : y.Mod(y, ss.p)}
+		X := aShares[party].X
+		Y := new(big.Int).Mul(aShares[party].Y, bShares[party].Y)
+		aTimesBShares[party] = Point{X : X, Y : Y.Mod(Y, ss.p)}
 	}
 
 	//Step 2:Each P_i distributes [h(i);f_i]_t
 	var shareShares [][]Point = make([][]Point, ss.n)
 	for party, share := range(aTimesBShares) {
-		shareShares[party] = ss.Share(share.y)
+		shareShares[party] = ss.Share(share.Y)
 	}
 
-	//Step 3: Create degree t sharing
+	//Step 3: Create degree threshold sharing
 
 	//todo clean up
 	r := reconstructionVectorFromPoints(aShares, ss.p)
@@ -133,25 +133,25 @@ func (ss *SecretSharingScheme)Mul(aShares, bShares []Point) []Point {
 	for party := range(shares) {
 		sum := big.NewInt(0)
 		for i, share := range(aShares) {
-			ri := r[share.x]
+			ri := r[share.X]
 			hishare := shareShares[i][party]
-			product := new(big.Int).Mul(ri, hishare.y)
+			product := new(big.Int).Mul(ri, hishare.Y)
 			sum.Add(sum, product)
 		}
 
 		shares[party] = Point{
-			x: int64(party + 1),
-			y: sum.Mod(sum, ss.p),
+			X: party + 1,
+			Y: sum.Mod(sum, ss.p),
 		}
 	}
 	
 	return shares
 }
 
-func evaluatePolynomialAt(p polynomial, x int64, prime *big.Int) *big.Int {
+func evaluatePolynomialAt(p polynomial, X int64, prime *big.Int) *big.Int {
 	if len(p) == 0 { return big.NewInt(0)}
-	bigX := big.NewInt(x)
-	xPower := big.NewInt(x)
+	bigX := big.NewInt(X)
+	xPower := big.NewInt(X)
 	sum := new(big.Int).Set(p[0])
 	for i := 1; i < len(p); i++ {
 		term := new(big.Int).Mul(p[i], xPower)
@@ -161,8 +161,8 @@ func evaluatePolynomialAt(p polynomial, x int64, prime *big.Int) *big.Int {
 	return sum.Mod(sum, prime)
 }
 
-func hornersEvaluatePolynomialAt(p polynomial, x int64, prime *big.Int) *big.Int {
-	bigX := big.NewInt(x)
+func hornersEvaluatePolynomialAt(p polynomial, X int64, prime *big.Int) *big.Int {
+	bigX := big.NewInt(X)
 	res := big.NewInt(0)
 	for i := len(p) - 1; i >= 0; i-- {
 		res.Mul(res, bigX)
@@ -179,34 +179,34 @@ func lagrangeInterpolationAtZero(points []Point, prime *big.Int) *big.Int {
 	sum := big.NewInt(0)
 	for _, share := range(points) {
 		tmp := new(big.Int)
-		tmp.Mul(share.y, r[share.x])//y_i*delta_i(0)
+		tmp.Mul(share.Y, r[share.X])//y_i*delta_i(0)
 		sum = sum.Add(sum, tmp)
 	}
 	
 	return sum.Mod(sum, prime)
 }
 
-func reconstructionVectorFromPoints(points []Point, prime *big.Int) map[int64]*big.Int {
-	m := make([]int64, len(points))
+func reconstructionVectorFromPoints(points []Point, prime *big.Int) map[int]*big.Int {
+	m := make([]int, len(points))
 	for i, p := range(points) {
-		m[i] = p.x
+		m[i] = p.X
 	}
 	return reconstructionVector(prime, m...)
 }
 
-func reconstructionVector(prime *big.Int, xs ...int64) map[int64]*big.Int {
-	terms := make(map[int64]*big.Int)
+func reconstructionVector(prime *big.Int, xs ...int) map[int]*big.Int {
+	terms := make(map[int]*big.Int)
 	for _, i := range(xs) {
-		num := int64(1)
-		den := int64(1)
+		num := 1
+		den := 1
 		for _, j := range(xs) {
 			if i == j {continue}
 			num *= j
 			den *= j - i
 		}
-		term := big.NewInt(den) //den
+		term := big.NewInt(int64(den)) //den
 		term.ModInverse(term, prime) //den^-1
-		term.Mul(term, big.NewInt(num)) //num*den^-1
+		term.Mul(term, big.NewInt(int64(num))) //num*den^-1
 		term.Mod(term, prime)
 		terms[i] = term
 	}
