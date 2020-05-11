@@ -17,14 +17,21 @@ type Player struct {
 	index int
 	ss *bigshamir.SecretSharingScheme
 	network network.Network
-	shareLock sync.Mutex
+	shareLock sync.RWMutex
 	shares map[string]*big.Int
+	multiplicationShares map[string][]multiplicationShare
 	reconstructionShares map[string][]bigshamir.Point
 }
 
 type identifiedShare struct {
 	point bigshamir.Point
 	identifier string
+}
+
+type multiplicationShare struct {
+	point bigshamir.Point
+	identifier string
+	index int
 }
 
 //NewPlayer ...
@@ -37,6 +44,7 @@ func NewPlayer(prime int64, threshold, n, index int) *Player {
 	p.ss = new(bigshamir.SecretSharingScheme)
 	*p.ss = bigshamir.NewSS(prime, threshold, n)
 	p.shares = make(map[string]*big.Int)
+	p.multiplicationShares = make(map[string][]multiplicationShare)
 	p.reconstructionShares = make(map[string][]bigshamir.Point)
 	return p
 }
@@ -46,26 +54,14 @@ func NewPlayer(prime int64, threshold, n, index int) *Player {
 func (p *Player)Share(x *big.Int, identifier string) {
 	points := p.ss.Share(x)
 	for _, point := range points {
-		fmt.Println(point)
 		p.Send(identifiedShare{point : point, identifier : identifier }, point.X)
 	}
 }
 
-//Add ...
-func (p *Player)Add(aIdentifier, bIdentifier, cIdentifier string) {
-	sum := new(big.Int)
-	sum.Add(p.getShareValue(aIdentifier), p.getShareValue(bIdentifier))
-	p.shares[cIdentifier] = sum
-}
-
 //Open ... 
 func (p *Player)Open(identifier string) {
-	yValue, exists := p.shares[identifier]
-	for !exists { 
-		time.Sleep(time.Millisecond)
-		yValue, exists = p.shares[identifier]
-	}
-		share := identifiedShare{
+	yValue := p.getShareValue(identifier)
+	share := identifiedShare{
 		point: bigshamir.Point{
 			X: p.index,
 			Y: yValue,
@@ -78,24 +74,83 @@ func (p *Player)Open(identifier string) {
 }
 
 //Reconstruct ...
-func (p *Player)Reconstruct(identifier string) {
+func (p *Player)Reconstruct(identifier string) *big.Int {
+	p.shareLock.RLock()
 	points := p.reconstructionShares[identifier]
+	p.shareLock.RUnlock()
 	for len(points) <= p.threshold {
-		fmt.Println("wait for more shares to reconstruct")
 		time.Sleep(time.Millisecond)
+		p.shareLock.RLock()
 		points = p.reconstructionShares[identifier]
+		p.shareLock.RUnlock()
 	}
-	fmt.Println(p.ss.Reconstruct(points))
-
+	return p.ss.Reconstruct(points)
 }
 
 func (p *Player)getShareValue(identifier string) *big.Int {
+	p.shareLock.RLock()
 	value, exists := p.shares[identifier]
+	p.shareLock.RUnlock()
 	for !exists { 
 		time.Sleep(time.Millisecond)
+		p.shareLock.RLock()
 		value, exists = p.shares[identifier]
+		p.shareLock.RUnlock()
 	}
 	return value
+}
+
+//Add ...
+func (p *Player)Add(aIdentifier, bIdentifier, cIdentifier string) {
+	sum := new(big.Int)
+	sum.Add(p.getShareValue(aIdentifier), p.getShareValue(bIdentifier))
+	sum.Mod(sum, p.prime)
+	p.shareLock.Lock()
+	p.shares[cIdentifier] = sum
+	p.shareLock.Unlock()
+}
+
+//Multiply ...
+func (p *Player)Multiply(aIdentifier, bIdentifier, cIdentifier string) {
+	localProduct := new(big.Int)
+	localProduct.Mul(p.getShareValue(aIdentifier), p.getShareValue(bIdentifier))
+	for _, share := range p.ss.Share(localProduct){
+		ms := multiplicationShare{
+			point: share,
+			identifier: cIdentifier,
+			index: p.index,
+		}
+		go p.Send(ms, share.X)
+	}
+
+	p.shareLock.RLock()
+	multiplicationShares := p.multiplicationShares[cIdentifier]
+	p.shareLock.RUnlock()
+	for len(multiplicationShares) < p.threshold * 2 + 1 {
+		time.Sleep(time.Millisecond)
+		p.shareLock.RLock()
+		multiplicationShares = p.multiplicationShares[cIdentifier]
+		p.shareLock.RUnlock()
+	}
+
+	xs := make([]int, len(multiplicationShares))
+	for i := range multiplicationShares {
+		xs[i] = multiplicationShares[i].index
+	}
+
+	r := bigshamir.ReconstructionVector(p.prime, xs...)
+	sum := big.NewInt(0)
+	for _, share := range(multiplicationShares) {
+		ri := r[share.index]
+
+		product := new(big.Int).Mul(ri, share.point.Y)
+		sum.Add(sum, product)
+	}
+	sum.Mod(sum, p.prime)
+
+	p.shareLock.Lock()
+	p.shares[cIdentifier] = sum
+	p.shareLock.Unlock()
 }
 
 //******************  NETWORK:  ****************
@@ -108,7 +163,6 @@ func (p *Player)Send(data interface{}, receiver int) {
 
 //Handle handles data from
 func (p *Player)Handle(data interface{}, sender int) {
-	//fmt.Println(p.index, "received", data, "from", sender)
 	switch t :=data.(type) {
 	case bigshamir.Point:
 		fmt.Println(t, "is point")
@@ -120,18 +174,16 @@ func (p *Player)Handle(data interface{}, sender int) {
 			p.shareLock.Unlock()
 		} else {
 			//We have received another party's share
-			//todo locks
 			p.shareLock.Lock()
 			p.reconstructionShares[t.identifier] = append(p.reconstructionShares[t.identifier], t.point)
-			if len(p.reconstructionShares[t.identifier]) == p.threshold {
-				//We have enough identifiedShare if we add our own
-				//todo delete?
-				p.reconstructionShares[t.identifier] = 
-				append(p.reconstructionShares[t.identifier], 
-					bigshamir.Point{X: p.index, Y: p.shares[t.identifier]})
-			}
+			//todo adding own index?
 			p.shareLock.Unlock()
 		}
+	case multiplicationShare:
+		p.shareLock.Lock()
+		p.multiplicationShares[t.identifier] =
+			append(p.multiplicationShares[t.identifier], t)
+		p.shareLock.Unlock()
 	}
 }
 

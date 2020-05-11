@@ -110,7 +110,7 @@ func TestMul(t *testing.T) {
 
 
 func TestReconstructionVector(t *testing.T) {
-	r := reconstructionVector(big.NewInt(11), 3, 4, 5)
+	r := ReconstructionVector(big.NewInt(11), 3, 4, 5)
 	test := func(index int, rIndex int64) {
 		rI, contains := r[index]
 		if !contains {t.Errorf("Does not contain r%d", index)}

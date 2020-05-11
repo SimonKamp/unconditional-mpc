@@ -23,7 +23,7 @@ func (p Point) String() string {
 
 type polynomial []*big.Int
 
-//SecretSharingScheme ...
+//SecretSharingScheme todo
 type SecretSharingScheme struct {
 	p *big.Int
 	threshold int
@@ -191,10 +191,11 @@ func reconstructionVectorFromPoints(points []Point, prime *big.Int) map[int]*big
 	for i, p := range(points) {
 		m[i] = p.X
 	}
-	return reconstructionVector(prime, m...)
+	return ReconstructionVector(prime, m...)
 }
 
-func reconstructionVector(prime *big.Int, xs ...int) map[int]*big.Int {
+//ReconstructionVector todo
+func ReconstructionVector(prime *big.Int, xs ...int) map[int]*big.Int {
 	terms := make(map[int]*big.Int)
 	for _, i := range(xs) {
 		num := 1
