@@ -6,7 +6,6 @@ import (
 	"../network/localnetwork"
 	"math/big"
 	"time"
-	"fmt"
 )
 
 func yield(milliseonds time.Duration) {
@@ -48,7 +47,7 @@ func TestAdd(t *testing.T) {
 			go party.Add("a", "b", "aPlusB")
 			go party.Open("aPlusB")
 		}
-		yield(10)
+		yield(1)
 		res := big.NewInt((a + b) % prime)
 		for _, party := range parties {
 			reconstructed := party.Reconstruct("aPlusB")
@@ -70,7 +69,7 @@ func TestMultiply(t *testing.T) {
 			go party.Multiply("a", "b", "aTimesB")
 			go party.Open("aTimesB")
 		}
-		yield(10)
+		yield(1)
 		res := big.NewInt((a * b) % prime)
 		for _, party := range parties {
 			reconstructed := party.Reconstruct("aTimesB")
@@ -85,40 +84,27 @@ func TestMultiply(t *testing.T) {
 	testMult(0, 9, 11)
 }
 
-func TestInterpret(t *testing.T) {
+func TestRun(t *testing.T) {
 	parties := setting(11, 1, 3)
-	party1Input := map[string]*big.Int{
-		"A": big.NewInt(1),
+	
+	parties[1].scanInput("test1/input1")
+	parties[2].scanInput("test1/input2")
+	parties[3].scanInput("test1/input3")
+
+	parties[1].scanInstructions("test1/sourcefile")
+	parties[2].scanInstructions("test1/sourcefile")
+	parties[3].scanInstructions("test1/sourcefile")
+
+	go parties[1].Run()
+	go parties[2].Run()
+	output := parties[3].Run()
+	if output["3*3"].Cmp(big.NewInt(9)) != 0 {
+		t.Errorf("3 * 3 mod 11 should be 9 was %d", output["3*3"])
 	}
-	parties[1].setInput(party1Input)
-	party2Input := map[string]*big.Int{
-		"B": big.NewInt(2),
+	if output["9*9"].Cmp(big.NewInt(4)) != 0 {
+		t.Errorf("9 * 9 mod 11 should be 4 was %d", output["9*9"])
 	}
-	parties[2].setInput(party2Input)
-	party3Input := map[string]*big.Int{
-		"C": big.NewInt(3),
+	if output["4*4"].Cmp(big.NewInt(5)) != 0 {
+		t.Errorf("4 * 4 mod 11 should be 5 was %d", output["4*4"])
 	}
-	parties[3].setInput(party3Input)
-	instructions := []instruction{
-		instruction{"IN", "1", "A"},
-		instruction{"IN", "2", "B"},
-		instruction{"IN", "3", "C"},
-		instruction{"ADD", "A", "B", "APB"},
-		instruction{"MUL", "APB", "C", "3X3"},
-		instruction{"MUL", "3X3", "3X3", "9X9"},
-		instruction{"MUL", "9X9", "9X9", "4X4"},
-		instruction{"OPEN", "9X9"},
-		instruction{"OUT", "9X9"},
-		instruction{"OPEN", "3X3"},
-		instruction{"OUT", "3X3"},
-		instruction{"OPEN", "4X4"},
-		instruction{"OUT", "4X4"},
-	}
-	go parties[1].Interpret(instructions)
-	go parties[2].Interpret(instructions)
-	output := parties[3].Interpret(instructions)
-	for id, val := range output {
-		fmt.Println("Test:", id, val)
-	}
-	yield(10)
 }

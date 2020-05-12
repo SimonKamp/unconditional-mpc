@@ -8,6 +8,10 @@ import (
 	"time"
 	"fmt"
 	"strconv"
+	"os"
+	"bufio"
+	"log"
+	"strings"
 )
 
 //Player runs the protocol
@@ -23,6 +27,7 @@ type Player struct {
 	multiplicationShares map[string][]multiplicationShare
 	reconstructionShares map[string][]bigshamir.Point
 	inputValues map[string]*big.Int
+	instructions[]instruction 
 }
 
 type identifiedShare struct {
@@ -202,7 +207,7 @@ func (p *Player)RegisterNetwork(network network.Network) {
 //********** INTERPRETER **************
 type instruction = []string
 //Interpret executes the computations specified by instructions
-func (p *Player)Interpret(instructions []instruction) map[string]*big.Int {
+func (p *Player)Run() map[string]*big.Int {
 	output := make(map[string]*big.Int)
 	//["ADD", "X", "Y", "Z"]
 	//p.Add("X", "Y", "Z")
@@ -214,7 +219,7 @@ func (p *Player)Interpret(instructions []instruction) map[string]*big.Int {
 
 	//["LT", "X", "Y", "Z"]
 
-	for _, insn := range instructions {
+	for _, insn := range p.instructions {
 		if len(insn) == 0 {continue}
 		switch insn[0] {
 		case "IN"://["IN", index of party, id]
@@ -252,4 +257,57 @@ func (p *Player)readInput(identifier string) *big.Int {
 
 func (p *Player)setInput(inputValues map[string]*big.Int) {
 	p.inputValues = inputValues
+}
+
+func (p *Player)scanInput(path string) {
+	file, err := os.Open(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	p.inputValues = make(map[string]*big.Int)
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()		
+		tokens := strings.Split(line, "=")
+		if len(tokens) != 2 {
+			continue
+		}
+		identifier := strings.TrimSpace(tokens[0])
+		
+		//read input as base 10 int:
+		value, ok := new(big.Int).SetString(strings.TrimSpace(tokens[1]), 10)
+		if !ok {
+			fmt.Println("could not parse value of", identifier, ":", tokens[1])
+			continue
+		}
+		p.inputValues[identifier] = value
+	}
+
+	if err := scanner.Err(); err != nil {
+        log.Fatal(err)
+    }
+}
+
+func (p *Player)scanInstructions(path string) {
+	file, err := os.Open(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()		
+		tokens := strings.Split(line, " ")
+		if len(tokens) == 0 {
+			continue
+		}
+		p.instructions = append(p.instructions, tokens)
+	}
+
+	if err := scanner.Err(); err != nil {
+        log.Fatal(err)
+	}
 }
