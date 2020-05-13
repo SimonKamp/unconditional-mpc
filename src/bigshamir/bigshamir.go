@@ -7,17 +7,25 @@ import (
 	"strconv"
 )
 
-//Point represents a point on a polynomial, i.e. the share of party X
-type Point struct {
-	X int
-	Y *big.Int
+type (
+	//SecretShare represented by a point on a polynomial
+	//i.e. the share of party X has value Y
+	SecretShare struct {
+		X int
+		Y *big.Int
+	}
+	//RecombinationShare is indexed by the party who shared it for recombining
+	RecombinationShare struct {
+		SecretShare SecretShare
+		Index int 
+	}
+)
+
+func newPoint(X, Y int) SecretShare {
+	return SecretShare{X: X, Y: big.NewInt(int64(Y))}
 }
 
-func newPoint(X, Y int) Point {
-	return Point{X: X, Y: big.NewInt(int64(Y))}
-}
-
-func (p Point) String() string {
+func (p SecretShare) String() string {
 	return "(" + strconv.FormatInt(int64(p.X), 10) + "," + p.Y.String() + ")"
 }
 
@@ -42,7 +50,7 @@ func NewSS(p int64, threshold, n int) SecretSharingScheme {
 var standardSetting = SecretSharingScheme { p : big.NewInt(5), threshold : 1, n : 3}
 
 //Share splits a secret into shares (points)
-func (ss *SecretSharingScheme) Share(secret *big.Int) []Point {
+func (ss *SecretSharingScheme) Share(secret *big.Int) []SecretShare {
 	//Draw random polynomial h
 	h := make([]*big.Int, ss.threshold + 1)
 	h[0] = secret
@@ -52,9 +60,9 @@ func (ss *SecretSharingScheme) Share(secret *big.Int) []Point {
 	}
 
 	//Evaluate points on h
-	shares := make([]Point, ss.n)
+	shares := make([]SecretShare, ss.n)
 	for i := 1; i <= ss.n; i++ {
-		shares[i-1] = Point{
+		shares[i-1] = SecretShare{
 			X: i, 
 			Y: hornersEvaluatePolynomialAt(h, int64(i), ss.p)}
 	}
@@ -63,7 +71,7 @@ func (ss *SecretSharingScheme) Share(secret *big.Int) []Point {
 }
 
 //Reconstruct extracts the secret from threshold or more shares
-func (ss *SecretSharingScheme)Reconstruct(shares []Point) *big.Int {
+func (ss *SecretSharingScheme)Reconstruct(shares []SecretShare) *big.Int {
 	k := len(shares)
 
 	if k < ss.threshold + 1 {
@@ -78,25 +86,25 @@ func (ss *SecretSharingScheme)Reconstruct(shares []Point) *big.Int {
 //Slices should have same indicies in same order
 //Can panic
 //Todo: implement sorting?
-func (ss *SecretSharingScheme)Add(aShares, bShares []Point) []Point {
-	aPlusBShares := make([]Point, len(aShares))
+func (ss *SecretSharingScheme)Add(aShares, bShares []SecretShare) []SecretShare {
+	aPlusBShares := make([]SecretShare, len(aShares))
 	
 	for i := range(aShares) {
 		X := aShares[i].X
 		Y := new(big.Int).Add(aShares[i].Y, bShares[i].Y)
-		aPlusBShares[i] = Point{X : X, Y : Y}
+		aPlusBShares[i] = SecretShare{X : X, Y : Y}
 	}
 
 	return aPlusBShares
 }
 
 //Scale multiplies a secret sharing by a constant
-func (ss *SecretSharingScheme)Scale(scalar *big.Int, shares []Point) []Point {
-	scaledShares := make([]Point, len(shares))
+func (ss *SecretSharingScheme)Scale(scalar *big.Int, shares []SecretShare) []SecretShare {
+	scaledShares := make([]SecretShare, len(shares))
 
 	for _, share := range(shares) {
 		scaled := new(big.Int).Mul(scalar, share.Y)
-		scaledShares[share.X - 1] = Point{X : share.X, Y : scaled}
+		scaledShares[share.X - 1] = SecretShare{X : share.X, Y : scaled}
 	}
 
 	return scaledShares
@@ -106,46 +114,58 @@ func (ss *SecretSharingScheme)Scale(scalar *big.Int, shares []Point) []Point {
 //slices should have same indicies in same order
 //Can panic
 //Todo: implement sorting?
-func (ss *SecretSharingScheme)Mul(aShares, bShares []Point) []Point {
+func (ss *SecretSharingScheme)Mul(aShares, bShares []SecretShare) []SecretShare {
 	if len(aShares) != ss.n || len(bShares) != ss.n {
 		panic("Missing shares")
 	}
 
 	//Step 1: Each party locally computes the product of its two shares
-	aTimesBShares := make([]Point, len(aShares))
+	aTimesBShares := make([]SecretShare, len(aShares))
 	for party := range(aShares) {
 		X := aShares[party].X
 		Y := new(big.Int).Mul(aShares[party].Y, bShares[party].Y)
-		aTimesBShares[party] = Point{X : X, Y : Y.Mod(Y, ss.p)}
+		aTimesBShares[party] = SecretShare{X : X, Y : Y.Mod(Y, ss.p)}
 	}
 
 	//Step 2:Each P_i distributes [h(i);f_i]_t
-	var shareShares [][]Point = make([][]Point, ss.n)
-	for party, share := range(aTimesBShares) {
-		shareShares[party] = ss.Share(share.Y)
+	partyLocalShares := make([][]RecombinationShare, ss.n)
+	for _, share := range(aTimesBShares) {
+		newShares := ss.Share(share.Y)
+		for i, newShare := range newShares {
+			partyLocalShares[i] = append(partyLocalShares[i], 
+				RecombinationShare{SecretShare: newShare, Index: share.X})
+		}
 	}
 
 	//Step 3: Create degree threshold sharing
-
-	//todo clean up
-	r := reconstructionVectorFromPoints(aShares, ss.p)
-	shares := make([]Point, ss.n)
-	for party := range(shares) {
-		sum := big.NewInt(0)
-		for i, share := range(aShares) {
-			ri := r[share.X]
-			hishare := shareShares[i][party]
-			product := new(big.Int).Mul(ri, hishare.Y)
-			sum.Add(sum, product)
-		}
-
-		shares[party] = Point{
-			X: party + 1,
-			Y: sum.Mod(sum, ss.p),
-		}
+	shares := make([]SecretShare, ss.n)
+	for party := range shares {
+		yValue := ss.RecombineMultiplicationShares(partyLocalShares[party])
+		shares[party] = SecretShare{X: party + 1, Y: yValue}
 	}
-	
+
 	return shares
+}
+
+//RecombineMultiplicationShares takes at least 2t+1 shares of degree <2t+1
+//returns shares of degree
+func (ss *SecretSharingScheme)RecombineMultiplicationShares(shares []RecombinationShare) *big.Int {
+	//Compute recombination vector 
+	xs := make([]int, len(shares))
+	for i := range shares {
+		xs[i] = shares[i].Index
+	}
+	r := RecombinationVector(ss.p, xs...)
+
+	sum := big.NewInt(0)
+	for _, share := range(shares) {
+		ri := r[share.Index]
+
+		product := new(big.Int).Mul(ri, share.SecretShare.Y)
+		sum.Add(sum, product)
+	}
+
+	return sum.Mod(sum, ss.p)
 }
 
 func evaluatePolynomialAt(p polynomial, X int64, prime *big.Int) *big.Int {
@@ -173,7 +193,7 @@ func hornersEvaluatePolynomialAt(p polynomial, X int64, prime *big.Int) *big.Int
 }
 
 
-func lagrangeInterpolationAtZero(points []Point, prime *big.Int) *big.Int {
+func lagrangeInterpolationAtZero(points []SecretShare, prime *big.Int) *big.Int {
 	r := reconstructionVectorFromPoints(points, prime)
 	
 	sum := big.NewInt(0)
@@ -186,16 +206,16 @@ func lagrangeInterpolationAtZero(points []Point, prime *big.Int) *big.Int {
 	return sum.Mod(sum, prime)
 }
 
-func reconstructionVectorFromPoints(points []Point, prime *big.Int) map[int]*big.Int {
+func reconstructionVectorFromPoints(points []SecretShare, prime *big.Int) map[int]*big.Int {
 	m := make([]int, len(points))
 	for i, p := range(points) {
 		m[i] = p.X
 	}
-	return ReconstructionVector(prime, m...)
+	return RecombinationVector(prime, m...)
 }
 
-//ReconstructionVector todo
-func ReconstructionVector(prime *big.Int, xs ...int) map[int]*big.Int {
+//RecombinationVector todo
+func RecombinationVector(prime *big.Int, xs ...int) map[int]*big.Int {
 	terms := make(map[int]*big.Int)
 	for _, i := range(xs) {
 		num := 1

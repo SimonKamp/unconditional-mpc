@@ -49,7 +49,7 @@ func TestHornersEvaluatePolynomialAt(t *testing.T) {
 }
 
 func TestLagrangeInterpolationAtZero(t *testing.T) {
-	shares := []Point{
+	shares := []SecretShare{
 		newPoint(1, 1),
 		newPoint(2, 8),
 		newPoint(3, 6),
@@ -83,7 +83,7 @@ func TestScale(t *testing.T) {
 
 func TestMul(t *testing.T) {
 	setting := NewSS(11, 1, 3)
-	fun := func(aShares, bShares []Point) []Point {
+	fun := func(aShares, bShares []SecretShare) []SecretShare {
 		aTimesBShares := setting.Mul(aShares, bShares)
 		a := setting.Reconstruct(aShares)
 		b := setting.Reconstruct(bShares)
@@ -109,8 +109,8 @@ func TestMul(t *testing.T) {
 }
 
 
-func TestReconstructionVector(t *testing.T) {
-	r := ReconstructionVector(big.NewInt(11), 3, 4, 5)
+func TestRecombinationVector(t *testing.T) {
+	r := RecombinationVector(big.NewInt(11), 3, 4, 5)
 	test := func(index int, rIndex int64) {
 		rI, contains := r[index]
 		if !contains {t.Errorf("Does not contain r%d", index)}

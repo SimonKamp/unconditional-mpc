@@ -87,13 +87,13 @@ func TestMultiply(t *testing.T) {
 func TestRun(t *testing.T) {
 	parties := setting(11, 1, 3)
 	
-	parties[1].scanInput("test1/input1")
-	parties[2].scanInput("test1/input2")
-	parties[3].scanInput("test1/input3")
+	parties[1].scanInput("tests/test1/input1")
+	parties[2].scanInput("tests/test1/input2")
+	parties[3].scanInput("tests/test1/input3")
 
-	parties[1].scanInstructions("test1/sourcefile")
-	parties[2].scanInstructions("test1/sourcefile")
-	parties[3].scanInstructions("test1/sourcefile")
+	parties[1].scanInstructions("tests/test1/sourcefile")
+	parties[2].scanInstructions("tests/test1/sourcefile")
+	parties[3].scanInstructions("tests/test1/sourcefile")
 
 	go parties[1].Run()
 	go parties[2].Run()
@@ -106,5 +106,35 @@ func TestRun(t *testing.T) {
 	}
 	if output["4*4"].Cmp(big.NewInt(5)) != 0 {
 		t.Errorf("4 * 4 mod 11 should be 5 was %d", output["4*4"])
+	}
+}
+
+func TestRandomBit(t *testing.T) {
+	test := func() {
+		//The random field element is zero with pr. 1/5
+		parties := setting(5, 1, 3)
+		res := make([]map[string]*big.Int, 3)
+	
+		run := func(i int) {
+			res[i] = parties[i].Run()
+		}
+		for _, party := range parties {
+			party.scanInstructions("tests/testRandomBit/prog")
+		}
+		go run(1)
+		go run(2)
+		output := parties[3].Run()
+	
+		yield(10)//not thread safe
+		if output["b"].Cmp(big.NewInt(0)) != 0 && output["b"].Cmp(big.NewInt(1)) != 0 {
+			t.Errorf("Random bit is not a bit: %d", output["b"])
+		}
+	
+		if output["b"].Cmp(res[1]["b"]) != 0 || output["b"].Cmp(res[2]["b"]) != 0 {
+			t.Errorf("Random bits do not agree: %d %d %d", output["b"], res[1]["b"], res[2]["b"])
+		}
+	}
+	for i := 0; i < 20; i++ {
+		test()
 	}
 }
