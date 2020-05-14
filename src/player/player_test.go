@@ -1,11 +1,12 @@
 package player
 
 import (
+	"math/big"
 	"testing"
+	"time"
+
 	"../network"
 	"../network/localnetwork"
-	"math/big"
-	"time"
 )
 
 func yield(milliseonds time.Duration) {
@@ -15,12 +16,12 @@ func yield(milliseonds time.Duration) {
 func setting(prime int64, threshold, n int) map[int]*Player {
 	parties := make(map[int]*Player, n)
 	handlers := make([]network.Handler, n)
-	for i := range(handlers) {
+	for i := range handlers {
 		parties[i+1] = NewPlayer(prime, threshold, n, i+1)
 		handlers[i] = parties[i+1]
 	}
 
-	for _, party := range(parties) {
+	for _, party := range parties {
 		ln := new(localnetwork.Localnetwork)
 		ln.RegisterHandler(party)
 		ln.SetConnections(handlers...)
@@ -86,7 +87,7 @@ func TestMultiply(t *testing.T) {
 
 func TestRun(t *testing.T) {
 	parties := setting(11, 1, 3)
-	
+
 	parties[1].scanInput("tests/test1/input1")
 	parties[2].scanInput("tests/test1/input2")
 	parties[3].scanInput("tests/test1/input3")
@@ -114,7 +115,7 @@ func TestRandomBit(t *testing.T) {
 		//The random field element is zero with pr. 1/5
 		parties := setting(5, 1, 3)
 		res := make([]map[string]*big.Int, 3)
-	
+
 		run := func(i int) {
 			res[i] = parties[i].Run()
 		}
@@ -124,12 +125,12 @@ func TestRandomBit(t *testing.T) {
 		go run(1)
 		go run(2)
 		output := parties[3].Run()
-	
-		yield(10)//not thread safe
+
+		yield(10) //not thread safe
 		if output["b"].Cmp(big.NewInt(0)) != 0 && output["b"].Cmp(big.NewInt(1)) != 0 {
 			t.Errorf("Random bit is not a bit: %d", output["b"])
 		}
-	
+
 		if output["b"].Cmp(res[1]["b"]) != 0 || output["b"].Cmp(res[2]["b"]) != 0 {
 			t.Errorf("Random bits do not agree: %d %d %d", output["b"], res[1]["b"], res[2]["b"])
 		}
@@ -137,4 +138,14 @@ func TestRandomBit(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		test()
 	}
+}
+
+func TestRandomSolvedBits(t *testing.T) {
+	parties := setting(31, 1, 3)
+
+	go parties[1].randomSolvedBits("r")
+	go parties[2].randomSolvedBits("r")
+	parties[3].randomSolvedBits("r")
+	yield(1)
+	//now what?
 }
