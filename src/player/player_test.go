@@ -141,11 +141,24 @@ func TestRandomBit(t *testing.T) {
 }
 
 func TestRandomSolvedBits(t *testing.T) {
-	parties := setting(31, 1, 3)
+	parties := setting(47, 1, 3)
 
 	go parties[1].randomSolvedBits("r")
 	go parties[2].randomSolvedBits("r")
-	parties[3].randomSolvedBits("r")
+	rID, rBitsIDs := parties[3].randomSolvedBits("r")
+	for _, party := range parties {
+		go party.Open(rID)
+		for _, id := range rBitsIDs {
+			go party.Open(id)
+		}
+	}
+	r1 := parties[1].Reconstruct(rID)
+	r2 := parties[2].Reconstruct(rID)
+	r3 := parties[3].Reconstruct(rID)
+	//Agreement on r and r < P
+	if r1.Cmp(r2) != 0 || r1.Cmp(r3) != 0 || parties[1].prime.Cmp(r1) != 1 {
+		t.Error(r1, r2, r3, parties[1].prime)
+	}
 	yield(1)
 	//now what?
 }

@@ -253,8 +253,42 @@ func (p *Player) Compare(aIdentifier, bIdentifier, cIdentifier string) {
 	// }
 }
 
-func (p *Player) bitCompare(aIdentifier, bIdentifier, cIdentifier string) {
+func (p *Player) bitCompare(aBitIDs, bBitIDs []string, cBitID string) {
+	//Compute sharing of XOR
+	xorShareIDs := make([]string, p.l+1)
+	for i := 0; i <= p.l; i++ {
+		xorShareIDs[i] = cBitID + "_bitCompare_xor" + strconv.Itoa(i)
+		ithBitOfAShare := p.getShareValue(aBitIDs[i])
+		ithBitOfBShare := p.getShareValue(bBitIDs[i])
+		sum := new(big.Int).Add(ithBitOfAShare, ithBitOfBShare) //[a_i]+[b_i]
+		multID := xorShareIDs[i] + "_tmp"
+		p.Multiply(aBitIDs[i], bBitIDs[i], multID)
+		xorProduct := p.getShareValue(multID)
+		xorProduct.Mul(big.NewInt(2), xorProduct) //2[a_i][b_i]
+		xorProduct.Mod(xorProduct, p.prime)
+		sum.Sub(sum, xorProduct) //[a_i]+[b_i] - 2[a_i][b_i]
+		sum.Mod(sum, p.prime)
 
+		p.shareLock.Lock()
+		p.shares[xorShareIDs[i]] = sum
+		p.shareLock.Unlock()
+	}
+	dBitIDs := p.mostSignificant1(xorShareIDs)
+	eBitIDs := make([]string, p.l+1)
+	for i := range eBitIDs {
+		eBitIDs[i] = cBitID + "_bitCompare_e" + strconv.Itoa(i)
+		//poor mans parallel multiplications
+		go p.Multiply(aBitIDs[i], dBitIDs[i], eBitIDs[i])
+	}
+	cShare := big.NewInt(0)
+	for i := range eBitIDs {
+		cShare.Add(cShare, p.getShareValue(eBitIDs[i]))
+	}
+	cShare.Mod(cShare, p.prime)
+
+	p.shareLock.Lock()
+	p.shares[cBitID] = cShare
+	p.shareLock.Unlock()
 }
 
 func (p *Player) bitAdd(bits []string) (resBitIds []string) { return }
@@ -325,7 +359,6 @@ func (p *Player) randomSolvedBits(identifier string) (fieldElemID string, bitIDs
 		comparisonBit := p.Reconstruct(identifier + "_randBits_" + iterationString + "_comparisonBit")
 
 		if comparisonBit.Sign() == 0 {
-			fmt.Println("random bits were < P", comparisonBit)
 			iteration++
 			iterationString = "iteration" + strconv.Itoa(iteration)
 		} else {
