@@ -162,3 +162,86 @@ func TestRandomSolvedBits(t *testing.T) {
 	yield(1)
 	//now what?
 }
+
+func TestCompare(t *testing.T) {
+	parties := setting(4001, 1, 3)
+
+	parties[1].Share(big.NewInt(3), "id3")
+	parties[2].Share(big.NewInt(5), "id5")
+
+	for _, party := range parties {
+		go party.Compare("id3", "id5", "id3>5")
+		go party.Open("id3>5")
+	}
+
+	// r1 := parties[1].Reconstruct("id3>5")
+	// r2 := parties[2].Reconstruct("id3>5")
+	// r3 := parties[3].Reconstruct("id3>5")
+	// //Agreement on 3 > 5
+	// if r1.Sign() != 0 || r2.Sign() != 0 || r3.Sign() != 0 {
+	// 	t.Error(r1, r2, r3)
+	// }
+	yield(1000)
+	//now what?
+}
+
+func TestFullAdder(t *testing.T) {
+	parties := setting(13, 1, 3)
+
+	parties[1].Share(big.NewInt(0), "0")
+	parties[2].Share(big.NewInt(1), "1")
+
+	for _, party := range parties {
+		go party.fullAdder("0", "0", "0", "carryout000", "add000")
+		go party.fullAdder("0", "0", "1", "carryout001", "add001")
+		go party.fullAdder("0", "1", "0", "carryout010", "add010")
+		go party.fullAdder("0", "1", "1", "carryout011", "add011")
+		go party.fullAdder("1", "0", "0", "carryout100", "add100")
+		go party.fullAdder("1", "0", "1", "carryout101", "add101")
+		go party.fullAdder("1", "1", "0", "carryout110", "add110")
+		go party.fullAdder("1", "1", "1", "carryout111", "add111")
+
+		go party.Open("carryout000")
+		go party.Open("carryout001")
+		go party.Open("carryout010")
+		go party.Open("carryout011")
+		go party.Open("carryout100")
+		go party.Open("carryout101")
+		go party.Open("carryout110")
+		go party.Open("carryout111")
+
+		go party.Open("add000")
+		go party.Open("add001")
+		go party.Open("add010")
+		go party.Open("add011")
+		go party.Open("add100")
+		go party.Open("add101")
+		go party.Open("add110")
+		go party.Open("add111")
+
+	}
+
+	party := parties[3]
+	shouldBe(0, party.Reconstruct("carryout000"), "carryout000", t)
+	shouldBe(0, party.Reconstruct("carryout001"), "carryout001", t)
+	shouldBe(0, party.Reconstruct("carryout010"), "carryout010", t)
+	shouldBe(1, party.Reconstruct("carryout011"), "carryout011", t)
+	shouldBe(0, party.Reconstruct("carryout100"), "carryout100", t)
+	shouldBe(1, party.Reconstruct("carryout101"), "carryout101", t)
+	shouldBe(1, party.Reconstruct("carryout110"), "carryout110", t)
+	shouldBe(1, party.Reconstruct("carryout111"), "carryout111", t)
+	shouldBe(0, party.Reconstruct("add000"), "add000", t)
+	shouldBe(1, party.Reconstruct("add001"), "add001", t)
+	shouldBe(1, party.Reconstruct("add010"), "add010", t)
+	shouldBe(0, party.Reconstruct("add011"), "add011", t)
+	shouldBe(1, party.Reconstruct("add100"), "add100", t)
+	shouldBe(0, party.Reconstruct("add101"), "add101", t)
+	shouldBe(0, party.Reconstruct("add110"), "add110", t)
+	shouldBe(1, party.Reconstruct("add111"), "add111", t)
+}
+
+func shouldBe(target int64, val *big.Int, desc string, t *testing.T) {
+	if val.Cmp(big.NewInt(target)) != 0 {
+		t.Error(desc, "Should be", target, "was", val)
+	}
+}
