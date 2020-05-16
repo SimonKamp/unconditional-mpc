@@ -236,29 +236,50 @@ func (p *Player) Multiply(aIdentifier, bIdentifier, cIdentifier string) {
 //Compare takes shares of aShare and b as input and outputs 1 iff aShare > b
 func (p *Player) Compare(aID, bID, cID string) {
 	//compute sharings of bits of aShare and b:
-	aBitIDs := p.bits(aID)
-	bBitIDs := p.bits(bID)
+	aBitIDs := make([]string, p.l+1)
+	bBitIDs := make([]string, p.l+1)
+	for i := range aBitIDs {
+		aBitIDs[i] = cID + "=" + aID + ">" + bID + "_:_bits_of_" + aID + "_index_" + strconv.Itoa(i)
+		bBitIDs[i] = cID + "=" + aID + ">" + bID + "_:_bits_of_" + bID + "_index_" + strconv.Itoa(i)
+	}
+	p.bits(aID, aBitIDs)
+	p.bits(bID, bBitIDs)
 	fmt.Println("a bits", aBitIDs)
 	fmt.Println("b bits", bBitIDs)
-	// p.bitCompare(aBitIDs, bBitIDs, cID)
+	//p.bitCompare(aBitIDs, bBitIDs, cID)
 }
 
-func (p *Player) bits(ID string) (resBitIds []string) {
-	resBitIds = make([]string, p.l+1)
-
+func (p *Player) bits(ID string, resultBitIDs []string) {
 	rID, rBitIDs := p.randomSolvedBits(ID)
-	p.Sub(ID, rID, ID+"_bits_c") //c = a - r
-	p.Open(ID + "_bits_c")
-	c := p.Reconstruct(ID + "_bits_c")
+	p.Sub(ID, rID, resultBitIDs[0]+"_bits_c") //c = a - r
+	p.Open(resultBitIDs[0] + "_bits_c")
+	c := p.Reconstruct(resultBitIDs[0] + "_bits_c")
 
 	//Compute bit sharing of sum of r and c, i.e. bit sharing of ID
+	cBitIDs := make([]string, p.l+1)
+	dBitIDs := make([]string, p.l+1)
+	pBitIDs := make([]string, p.l+1)
+	epBitIDs := make([]string, p.l+1)
+	p.shareLock.Lock()
 	for i := 0; i <= p.l; i++ {
-		ithBitOfC := big.NewInt(int64(c.Bit(i)))
-		ithBitOfRShare := p.getShareValue(rBitIDs[i])
-		fmt.Print(ithBitOfRShare, ithBitOfC)
+		cBitIDs[i] = resultBitIDs[i] + "_bits_cBits"
+		dBitIDs[i] = resultBitIDs[i] + "_bits_dBits"
+		pBitIDs[i] = resultBitIDs[i] + "_bits_pBits"
+		epBitIDs[i] = resultBitIDs[i] + "_bits_cepBits"
+		p.shares[cBitIDs[i]] = big.NewInt(int64(c.Bit(i)))
+		p.shares[pBitIDs[i]] = big.NewInt(int64(p.prime.Bit(i)))
+	}
+	p.shareLock.Unlock()
+
+	p.bitAdd(rBitIDs, cBitIDs, dBitIDs)
+	e := resultBitIDs[0] + "_bits_compareBits_e"
+	p.bitCompare(dBitIDs, pBitIDs, e)
+	for i := range epBitIDs {
+		p.Multiply(e, pBitIDs[i], epBitIDs[i])
 	}
 
-	return
+	p.bitSub(dBitIDs, epBitIDs, resultBitIDs)
+
 }
 
 func (p *Player) bitCompare(aBitIDs, bBitIDs []string, cBitID string) {
@@ -285,7 +306,6 @@ func (p *Player) bitCompare(aBitIDs, bBitIDs []string, cBitID string) {
 	eBitIDs := make([]string, p.l+1)
 	for i := range eBitIDs {
 		eBitIDs[i] = cBitID + "_bitCompare_e" + strconv.Itoa(i)
-		//poor mans parallel multiplications
 		go p.Multiply(aBitIDs[i], dBitIDs[i], eBitIDs[i])
 	}
 	cShare := big.NewInt(0)
@@ -322,9 +342,9 @@ func (p *Player) fullAdder(aBitID, bBitID, carryInBitID, carryOutBitID, cBitID s
 	//			= ! (!(a & b) & !(a & carry_in) & !(b & carry_in))
 	//			= 1 - ((1 - a * b) * (1 - a * carry_in) * (1 - b * carry_in))
 
-	go p.Multiply(aBitID, bBitID, cBitID+"_a&b")
-	go p.Multiply(aBitID, carryInBitID, cBitID+"_a&carryIn")
-	go p.Multiply(bBitID, carryInBitID, cBitID+"_b&carryIn")
+	p.Multiply(aBitID, bBitID, cBitID+"_a&b")
+	p.Multiply(aBitID, carryInBitID, cBitID+"_a&carryIn")
+	p.Multiply(bBitID, carryInBitID, cBitID+"_b&carryIn")
 
 	ab := p.getShareValue(cBitID + "_a&b")
 	aCarryIn := p.getShareValue(cBitID + "_a&carryIn")
@@ -333,7 +353,7 @@ func (p *Player) fullAdder(aBitID, bBitID, carryInBitID, carryOutBitID, cBitID s
 	p.shares[cBitID+"_!a&b"] = bitNot(ab)
 	p.shares[cBitID+"_!a&carryIn"] = bitNot(aCarryIn)
 	p.shareLock.Unlock()
-	go p.Multiply(cBitID+"_!a&b", cBitID+"_!a&carryIn", cBitID+"_!a&b_&_!a&carryIn")
+	p.Multiply(cBitID+"_!a&b", cBitID+"_!a&carryIn", cBitID+"_!a&b_&_!a&carryIn")
 
 	bCarryIn := p.getShareValue(cBitID + "_b&carryIn")
 	p.shareLock.Lock()
@@ -364,25 +384,55 @@ func bitNot(aBitShare *big.Int) *big.Int {
 	return new(big.Int).Sub(big.NewInt(1), aBitShare)
 }
 
-func (p *Player) bitAdd(aBitIDs, bBitIDs []string) (resBitIds []string) {
-	resBitIds = make([]string, len(aBitIDs))
-	if len(aBitIDs) != len(bBitIDs) {
-		fmt.Println("bit add different lengths")
+func (p *Player) bitAdd(aBitIDs, bBitIDs, resBitIDs []string) {
+	if len(aBitIDs) != len(bBitIDs) || len(aBitIDs) != len(resBitIDs) {
+		panic("bit add different lengths")
 		return
 	}
 
-	for i := range resBitIds {
-		resBitIds[i] = aBitIDs[i] + "+" + aBitIDs[i]
-
-		//carry_out = (a & b) | (a & carry_in) | (b & carry_in)
-		//			= ! (!(a & b) & !(a & carry_in) & !(b & carry_in))
-		//			= 1 - ((1 - a * b) * (1 - a * carry_in) * (1 - b * carry_in))
-		//c = a + b + c - 2 * carry_out
+	for i := range resBitIDs {
+		if i == 0 {
+			//Carry in = 0
+			p.shareLock.Lock()
+			p.shares[resBitIDs[i]+"_carryin0"] = big.NewInt(0)
+			p.shareLock.Unlock()
+		}
+		carryInID := resBitIDs[i] + "_carryin" + strconv.Itoa(i)
+		carryOutID := resBitIDs[i] + "_carryin" + strconv.Itoa(i+1)
+		p.fullAdder(aBitIDs[i], bBitIDs[i], carryInID, carryOutID, resBitIDs[i])
 	}
 
-	return
+	//todo remove tmps?
 }
-func (p *Player) bitSub(bits []string) (resBitIds []string) { return }
+
+func (p *Player) bitSub(aBitIDs, bBitIDs, resBitIDs []string) {
+	if len(aBitIDs) != len(bBitIDs) || len(aBitIDs) != len(resBitIDs) {
+		panic("bit add different lengths")
+		return
+	}
+	flippedBBitIDs := make([]string, len(bBitIDs))
+	for i := range flippedBBitIDs {
+		flippedBBitIDs[i] = bBitIDs[i] + "_sub_flipped"
+		flippedBit := bitNot(p.getShareValue(bBitIDs[i]))
+		p.shareLock.Lock()
+		p.shares[flippedBBitIDs[i]] = flippedBit
+		p.shareLock.Unlock()
+	}
+
+	for i := range resBitIDs {
+		if i == 0 {
+			//Carry in = 1
+			p.shareLock.Lock()
+			p.shares[resBitIDs[i]+"_carryin0"] = big.NewInt(1)
+			p.shareLock.Unlock()
+		}
+		carryInID := resBitIDs[i] + "_carryin" + strconv.Itoa(i)
+		carryOutID := resBitIDs[i] + "_carryin" + strconv.Itoa(i+1)
+		p.fullAdder(aBitIDs[i], flippedBBitIDs[i], carryInID, carryOutID, resBitIDs[i])
+	}
+
+	//todo remove tmps?
+}
 
 func (p *Player) randomSolvedBits(identifier string) (fieldElemID string, bitIDs []string) {
 	fieldElemID = identifier + "_randBits_r"
@@ -395,7 +445,7 @@ func (p *Player) randomSolvedBits(identifier string) (fieldElemID string, bitIDs
 		for i := 0; i <= p.l; i++ {
 			bitIDs[i] = identifier + "_randBits_" + iterationString + "_r" + strconv.Itoa(i)
 			xorBitIdentifiers[i] = identifier + "_randBits_" + iterationString + "_xor" + strconv.Itoa(i)
-			go p.RandomBit(bitIDs[i])
+			p.RandomBit(bitIDs[i])
 		}
 		//get bits of P
 		//p.prime.Bit(i)

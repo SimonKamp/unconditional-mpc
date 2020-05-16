@@ -2,6 +2,7 @@ package player
 
 import (
 	"math/big"
+	"strconv"
 	"testing"
 	"time"
 
@@ -164,7 +165,7 @@ func TestRandomSolvedBits(t *testing.T) {
 }
 
 func TestCompare(t *testing.T) {
-	parties := setting(4001, 1, 3)
+	parties := setting(31, 1, 3)
 
 	parties[1].Share(big.NewInt(3), "id3")
 	parties[2].Share(big.NewInt(5), "id5")
@@ -174,6 +175,7 @@ func TestCompare(t *testing.T) {
 		go party.Open("id3>5")
 	}
 
+	//parties[1].Reconstruct("id3>5")
 	// r1 := parties[1].Reconstruct("id3>5")
 	// r2 := parties[2].Reconstruct("id3>5")
 	// r3 := parties[3].Reconstruct("id3>5")
@@ -243,5 +245,52 @@ func TestFullAdder(t *testing.T) {
 func shouldBe(target int64, val *big.Int, desc string, t *testing.T) {
 	if val.Cmp(big.NewInt(target)) != 0 {
 		t.Error(desc, "Should be", target, "was", val)
+	}
+}
+
+func bitIDs(val, prime *big.Int) []string {
+	res := make([]string, prime.BitLen()+1)
+	for i := range res {
+		if val.Bit(i) == 0 {
+			res[i] = "0"
+		} else {
+			res[i] = "1"
+		}
+	}
+	return res
+}
+
+func TestBitCompare(t *testing.T) {
+	parties := setting(4001, 1, 3)
+
+	parties[1].Share(big.NewInt(0), "0")
+	parties[2].Share(big.NewInt(1), "1")
+	var bitIDReps [][]string
+	for i := 0; i < 13; i++ {
+		bitIDReps =
+			append(bitIDReps, bitIDs(big.NewInt(int64(i)), parties[1].prime))
+	}
+	var tests []string
+	var testResults []int64
+	for _, party := range parties {
+		for i := range bitIDReps {
+			for j := range bitIDReps {
+				id := strconv.Itoa(i) + " > " + strconv.Itoa(j)
+				tests = append(tests, id)
+				if i > j {
+					testResults = append(testResults, 1)
+				} else {
+					testResults = append(testResults, 0)
+				}
+				go party.bitCompare(bitIDReps[i], bitIDReps[j], id)
+				go party.Open(id)
+			}
+		}
+	}
+
+	party := parties[3]
+	for i := range tests {
+		shouldBe(testResults[i], party.Reconstruct(tests[i]), tests[i], t)
+
 	}
 }
