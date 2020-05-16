@@ -160,8 +160,12 @@ func TestRandomSolvedBits(t *testing.T) {
 	if r1.Cmp(r2) != 0 || r1.Cmp(r3) != 0 || parties[1].prime.Cmp(r1) != 1 {
 		t.Error(r1, r2, r3, parties[1].prime)
 	}
-	yield(1)
-	//now what?
+	for bitIndex := range rBitsIDs {
+		rBit := parties[1].Reconstruct(rBitsIDs[bitIndex])
+		if rBit.Int64() != int64(r1.Bit(bitIndex)) {
+			t.Error(rBit, r1.Bit(bitIndex))
+		}
+	}
 }
 
 func TestCompare(t *testing.T) {
@@ -175,16 +179,13 @@ func TestCompare(t *testing.T) {
 		go party.Open("id3>5")
 	}
 
-	//parties[1].Reconstruct("id3>5")
-	// r1 := parties[1].Reconstruct("id3>5")
-	// r2 := parties[2].Reconstruct("id3>5")
-	// r3 := parties[3].Reconstruct("id3>5")
-	// //Agreement on 3 > 5
-	// if r1.Sign() != 0 || r2.Sign() != 0 || r3.Sign() != 0 {
-	// 	t.Error(r1, r2, r3)
-	// }
-	yield(1000)
-	//now what?
+	r1 := parties[1].Reconstruct("id3>5")
+	r2 := parties[2].Reconstruct("id3>5")
+	r3 := parties[3].Reconstruct("id3>5")
+	//Agreement on 3 > 5
+	if r1.Sign() != 0 || r2.Sign() != 0 || r3.Sign() != 0 {
+		t.Error(r1, r2, r3)
+	}
 }
 
 func TestFullAdder(t *testing.T) {
@@ -293,4 +294,33 @@ func TestBitCompare(t *testing.T) {
 		shouldBe(testResults[i], party.Reconstruct(tests[i]), tests[i], t)
 
 	}
+}
+
+func TestBits(t *testing.T) {
+	parties := setting(4001, 1, 3)
+
+	for i := 0; i < 17; i++ {
+		input := big.NewInt(int64(i))
+		test := input.String()
+		parties[1].Share(input, test)
+
+		resultBitsIDs := make([]string, parties[1].prime.BitLen()+1)
+		for bitIndex := range resultBitsIDs {
+			resultBitsIDs[bitIndex] = test + "_index_" + strconv.Itoa(bitIndex)
+		}
+
+		for _, party := range parties {
+			go party.bits(test, resultBitsIDs)
+			for bitIndex := range resultBitsIDs {
+				go party.Open(resultBitsIDs[bitIndex])
+			}
+		}
+
+		for bitIndex := range resultBitsIDs {
+			//TODO fails
+			shouldBe(int64(input.Bit(bitIndex)),
+				parties[1].Reconstruct(resultBitsIDs[bitIndex]), resultBitsIDs[bitIndex], t)
+		}
+	}
+
 }

@@ -244,9 +244,7 @@ func (p *Player) Compare(aID, bID, cID string) {
 	}
 	p.bits(aID, aBitIDs)
 	p.bits(bID, bBitIDs)
-	fmt.Println("a bits", aBitIDs)
-	fmt.Println("b bits", bBitIDs)
-	//p.bitCompare(aBitIDs, bBitIDs, cID)
+	p.bitCompare(aBitIDs, bBitIDs, cID)
 }
 
 func (p *Player) bits(ID string, resultBitIDs []string) {
@@ -394,12 +392,16 @@ func (p *Player) bitAdd(aBitIDs, bBitIDs, resBitIDs []string) {
 		if i == 0 {
 			//Carry in = 0
 			p.shareLock.Lock()
-			p.shares[resBitIDs[i]+"_carryin0"] = big.NewInt(0)
+			p.shares[resBitIDs[i]+"_carry_in_0"] = big.NewInt(0)
 			p.shareLock.Unlock()
+			carryInID := resBitIDs[i] + "_carry_in_0"
+			carryOutID := resBitIDs[i] + "_carry_out_0"
+			p.fullAdder(aBitIDs[i], bBitIDs[i], carryInID, carryOutID, resBitIDs[i])
+		} else {
+			carryInID := resBitIDs[i-1] + "_carry_out_" + strconv.Itoa(i-1)
+			carryOutID := resBitIDs[i] + "_carry_out_" + strconv.Itoa(i)
+			p.fullAdder(aBitIDs[i], bBitIDs[i], carryInID, carryOutID, resBitIDs[i])
 		}
-		carryInID := resBitIDs[i] + "_carryin" + strconv.Itoa(i)
-		carryOutID := resBitIDs[i] + "_carryin" + strconv.Itoa(i+1)
-		p.fullAdder(aBitIDs[i], bBitIDs[i], carryInID, carryOutID, resBitIDs[i])
 	}
 
 	//todo remove tmps?
@@ -423,14 +425,17 @@ func (p *Player) bitSub(aBitIDs, bBitIDs, resBitIDs []string) {
 		if i == 0 {
 			//Carry in = 1
 			p.shareLock.Lock()
-			p.shares[resBitIDs[i]+"_carryin0"] = big.NewInt(1)
+			p.shares[resBitIDs[i]+"_carry_in_0"] = big.NewInt(1)
 			p.shareLock.Unlock()
+			carryInID := resBitIDs[i] + "_carry_in_0"
+			carryOutID := resBitIDs[i] + "_carry_out_0"
+			p.fullAdder(aBitIDs[i], bBitIDs[i], carryInID, carryOutID, resBitIDs[i])
+		} else {
+			carryInID := resBitIDs[i-1] + "_carry_out_" + strconv.Itoa(i-1)
+			carryOutID := resBitIDs[i] + "_carry_out_" + strconv.Itoa(i)
+			p.fullAdder(aBitIDs[i], flippedBBitIDs[i], carryInID, carryOutID, resBitIDs[i])
 		}
-		carryInID := resBitIDs[i] + "_carryin" + strconv.Itoa(i)
-		carryOutID := resBitIDs[i] + "_carryin" + strconv.Itoa(i+1)
-		p.fullAdder(aBitIDs[i], flippedBBitIDs[i], carryInID, carryOutID, resBitIDs[i])
 	}
-
 	//todo remove tmps?
 }
 
