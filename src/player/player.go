@@ -239,8 +239,10 @@ func (p *Player) Compare(aID, bID, cID string) {
 	aBitIDs := make([]string, p.l+1)
 	bBitIDs := make([]string, p.l+1)
 	for i := range aBitIDs {
-		aBitIDs[i] = cID + "=" + aID + ">" + bID + "_:_bits_of_" + aID + "_index_" + strconv.Itoa(i)
-		bBitIDs[i] = cID + "=" + aID + ">" + bID + "_:_bits_of_" + bID + "_index_" + strconv.Itoa(i)
+		aBitIDs[i] = cID + "=" + aID + ">" + bID +
+			"_:_bits_of_" + aID + "_index_" + strconv.Itoa(i)
+		bBitIDs[i] = cID + "=" + aID + ">" + bID +
+			"_:_bits_of_" + bID + "_index_" + strconv.Itoa(i)
 	}
 	p.bits(aID, aBitIDs)
 	p.bits(bID, bBitIDs)
@@ -429,7 +431,7 @@ func (p *Player) bitSub(aBitIDs, bBitIDs, resBitIDs []string) {
 			p.shareLock.Unlock()
 			carryInID := resBitIDs[i] + "_carry_in_0"
 			carryOutID := resBitIDs[i] + "_carry_out_0"
-			p.fullAdder(aBitIDs[i], bBitIDs[i], carryInID, carryOutID, resBitIDs[i])
+			p.fullAdder(aBitIDs[i], flippedBBitIDs[i], carryInID, carryOutID, resBitIDs[i])
 		} else {
 			carryInID := resBitIDs[i-1] + "_carry_out_" + strconv.Itoa(i-1)
 			carryOutID := resBitIDs[i] + "_carry_out_" + strconv.Itoa(i)

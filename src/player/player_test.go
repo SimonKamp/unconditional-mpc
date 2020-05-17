@@ -249,8 +249,8 @@ func shouldBe(target int64, val *big.Int, desc string, t *testing.T) {
 	}
 }
 
-func bitIDs(val, prime *big.Int) []string {
-	res := make([]string, prime.BitLen()+1)
+func bitIDs(val *big.Int, prime int64) []string {
+	res := make([]string, big.NewInt(prime).BitLen()+1)
 	for i := range res {
 		if val.Bit(i) == 0 {
 			res[i] = "0"
@@ -262,14 +262,15 @@ func bitIDs(val, prime *big.Int) []string {
 }
 
 func TestBitCompare(t *testing.T) {
-	parties := setting(4001, 1, 3)
+	var prime int64 = 4001
+	parties := setting(prime, 1, 3)
 
 	parties[1].Share(big.NewInt(0), "0")
 	parties[2].Share(big.NewInt(1), "1")
 	var bitIDReps [][]string
 	for i := 0; i < 13; i++ {
 		bitIDReps =
-			append(bitIDReps, bitIDs(big.NewInt(int64(i)), parties[1].prime))
+			append(bitIDReps, bitIDs(big.NewInt(int64(i)), prime))
 	}
 	var tests []string
 	var testResults []int64
@@ -294,6 +295,46 @@ func TestBitCompare(t *testing.T) {
 		shouldBe(testResults[i], party.Reconstruct(tests[i]), tests[i], t)
 
 	}
+}
+
+func TestBitSub(t *testing.T) {
+	prime := int64(4001)
+	parties := setting(prime, 1, 3)
+
+	iterations := 7
+
+	parties[1].Share(big.NewInt(0), "0")
+	parties[2].Share(big.NewInt(1), "1")
+	for i := 0; i < iterations; i++ {
+		for j := 0; j < iterations; j++ {
+			iVal := big.NewInt(int64(i))
+			jVal := big.NewInt(int64(j))
+			iPlusJVal := big.NewInt(int64(i - j))
+			iBits := bitIDs(iVal, prime)
+			jBits := bitIDs(jVal, prime)
+			// iPlusJBits := bitIDs(iPlusJVal, prime)
+			iMinusJResultsBits := make([]string, len(iBits))
+			for k := range iBits {
+				iMinusJResultsBits[k] =
+					strconv.Itoa(i) + " - " +
+						strconv.Itoa(j) + "_index_" + strconv.Itoa(k)
+			}
+			for _, party := range parties {
+				go party.bitSub(iBits, jBits, iMinusJResultsBits)
+				for _, id := range iMinusJResultsBits {
+					go party.Open(id)
+				}
+			}
+
+			for bitIndex := range iMinusJResultsBits {
+				shouldBe(
+					int64(iPlusJVal.Bit(bitIndex)),
+					parties[1].Reconstruct(iMinusJResultsBits[bitIndex]),
+					iMinusJResultsBits[bitIndex], t)
+			}
+		}
+	}
+
 }
 
 func TestBits(t *testing.T) {
