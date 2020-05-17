@@ -508,9 +508,9 @@ func (p *Player) randomSolvedBits(identifier string) (fieldElemID string, bitIDs
 
 	fieldElementShare := big.NewInt(0)
 	for i := range bitIDs {
-		tmp := big.NewInt(2)
-		tmp.Exp(tmp, big.NewInt(int64(i)), p.prime)
-		fieldElementShare.Add(fieldElementShare, tmp)
+		term := new(big.Int).Set(p.getShareValue(bitIDs[i]))
+		term.Lsh(term, uint(i))
+		fieldElementShare.Add(fieldElementShare, term)
 	}
 	fieldElementShare.Mod(fieldElementShare, p.prime)
 
