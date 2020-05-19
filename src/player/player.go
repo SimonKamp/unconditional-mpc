@@ -31,12 +31,18 @@ type Player struct {
 
 	//Concurrently accessed:
 	//Regular shares
-	shareLock            sync.RWMutex
-	shares               map[string]*big.Int //todo consider using sync.Map
-	reconstructionShares map[string][]bigshamir.SecretShare
+	shareLock             sync.RWMutex
+	idVals                map[string]*big.Int //todo consider using sync.Map
+	idValBlockingChannels map[string][]chan *big.Int
+	secrets               map[string]bool //subset of values
+
+	reconstructionShareLock             sync.RWMutex
+	reconstructionShares                map[string][]bigshamir.SecretShare
+	reconstructionShareBlockingChannels map[string][]chan []bigshamir.SecretShare
 
 	//Recombination shares for multiplication
-	multShares map[string][]multiplicationShare
+	multShareLock sync.RWMutex
+	multShares    map[string][]multiplicationShare
 
 	//Random bit shares
 	randomBitLock           sync.RWMutex
@@ -76,8 +82,11 @@ func NewPlayer(prime int64, threshold, n, index int) *Player {
 	p.index = index
 	p.ss = new(bigshamir.SecretSharingScheme)
 	*p.ss = bigshamir.NewSS(prime, threshold, n)
-	p.shares = make(map[string]*big.Int)
+	p.idVals = make(map[string]*big.Int)
+	p.idValBlockingChannels = make(map[string][]chan *big.Int)
+	p.secrets = make(map[string]bool)
 	p.reconstructionShares = make(map[string][]bigshamir.SecretShare)
+	p.reconstructionShareBlockingChannels = make(map[string][]chan []bigshamir.SecretShare)
 	p.multShares = make(map[string][]multiplicationShare)
 	p.randFieldElemShares = make(map[string][]localRandomFieldElementShare)
 	p.randomBitASquaredShares = make(map[string][]bigshamir.SecretShare)
@@ -95,142 +104,209 @@ func (p *Player) Share(x *big.Int, identifier string) {
 
 //Open ...
 func (p *Player) Open(identifier string) {
-	yValue := p.getShareValue(identifier)
-	share := identifiedShare{
-		point: bigshamir.SecretShare{
-			X: p.index,
-			Y: yValue,
-		},
-		id: identifier,
+	yValue, _ := p.getShareValue(identifier)
+	secretShare := bigshamir.SecretShare{
+		X: p.index,
+		Y: yValue,
 	}
+	share := identifiedShare{
+		point: secretShare,
+		id:    identifier,
+	}
+	// p.reconstructionShareLock.Lock()
+	// p.reconstructionShares[identifier] = append(p.reconstructionShares[identifier], secretShare)
+	// p.reconstructionShareLock.Unlock()
 	for i := 1; i <= p.n; i++ {
-		p.Send(share, i)
+		if i == p.index {
+			continue
+		}
+		go p.Send(share, i)
 	}
 }
 
 //Reconstruct ...
 func (p *Player) Reconstruct(identifier string) *big.Int {
-	p.shareLock.RLock()
+	p.reconstructionShareLock.RLock()
 	points := p.reconstructionShares[identifier]
-	p.shareLock.RUnlock()
-	for len(points) < p.threshold+1 {
-		time.Sleep(time.Millisecond)
-		p.shareLock.RLock()
-		points = p.reconstructionShares[identifier]
-		p.shareLock.RUnlock()
+	p.reconstructionShareLock.RUnlock()
+
+	if len(points) > p.threshold {
+		return p.ss.Reconstruct(points)
 	}
+
+	p.reconstructionShareLock.Lock()
+	points = p.reconstructionShares[identifier]
+	if len(points) > p.threshold {
+		p.reconstructionShareLock.Unlock()
+		return p.ss.Reconstruct(points)
+	}
+
+	channel := make(chan []bigshamir.SecretShare)
+	channels := p.reconstructionShareBlockingChannels[identifier]
+	p.reconstructionShareBlockingChannels[identifier] = append(channels, channel)
+	p.reconstructionShareLock.Unlock()
+	points = <-channel
+
 	return p.ss.Reconstruct(points)
 }
 
-func (p *Player) getShareValue(identifier string) *big.Int {
+func (p *Player) getShareValue(identifier string) (val *big.Int, isSecret bool) {
 	p.shareLock.RLock()
-	value, exists := p.shares[identifier]
+	val, exists := p.idVals[identifier]
+	isSecret = p.secrets[identifier]
 	p.shareLock.RUnlock()
-	for !exists {
-		time.Sleep(time.Millisecond)
-		p.shareLock.RLock()
-		value, exists = p.shares[identifier]
-		p.shareLock.RUnlock()
+
+	if exists {
+		return
 	}
-	return value
+
+	p.shareLock.Lock()
+	val, exists = p.idVals[identifier]
+	if exists {
+		isSecret = p.secrets[identifier]
+		p.shareLock.Unlock()
+		return
+	}
+	resultChannel := make(chan *big.Int)
+	channels := p.idValBlockingChannels[identifier]
+	p.idValBlockingChannels[identifier] = append(channels, resultChannel)
+	p.shareLock.Unlock()
+	val = <-resultChannel
+
+	//todo send both over channel
+	p.shareLock.RLock()
+	isSecret = p.secrets[identifier]
+	p.shareLock.RUnlock()
+	return
+
+}
+
+func (p *Player) setShareValue(id string, val *big.Int, isSecret bool) {
+	p.shareLock.Lock()
+	p.idVals[id] = val
+	if isSecret {
+		p.secrets[id] = true
+	}
+	for _, channel := range p.idValBlockingChannels[id] {
+		channel <- val
+	}
+	delete(p.idValBlockingChannels, id)
+	p.shareLock.Unlock()
 }
 
 //Add ...
-func (p *Player) Add(aIdentifier, bIdentifier, cIdentifier string) {
+func (p *Player) Add(aID, bID, cID string) {
 	sum := new(big.Int)
-	sum.Add(p.getShareValue(aIdentifier), p.getShareValue(bIdentifier))
+	a, aIsSecret := p.getShareValue(aID)
+	b, bIsSecret := p.getShareValue(bID)
+	sum.Add(a, b)
 	sum.Mod(sum, p.prime)
-	p.shareLock.Lock()
-	p.shares[cIdentifier] = sum
-	p.shareLock.Unlock()
+
+	secret := aIsSecret || bIsSecret
+	p.setShareValue(cID, sum, secret)
 }
 
 //AddOpen ...
-func (p *Player) AddOpen(aShare *big.Int, bIdentifier, cIdentifier string) {
+func (p *Player) AddOpen(aShare *big.Int, bID, cID string) {
 	sum := new(big.Int)
-	sum.Add(aShare, p.getShareValue(bIdentifier))
+	b, bIsSecret := p.getShareValue(bID)
+	sum.Add(aShare, b)
 	sum.Mod(sum, p.prime)
-	p.shareLock.Lock()
-	p.shares[cIdentifier] = sum
-	p.shareLock.Unlock()
+
+	p.setShareValue(cID, sum, bIsSecret)
 }
 
 //Sub ...
-func (p *Player) Sub(aIdentifier, bIdentifier, cIdentifier string) {
-	sum := new(big.Int)
-	sum.Sub(p.getShareValue(aIdentifier), p.getShareValue(bIdentifier))
-	sum.Mod(sum, p.prime)
-	p.shareLock.Lock()
-	p.shares[cIdentifier] = sum
-	p.shareLock.Unlock()
+func (p *Player) Sub(aID, bID, cID string) {
+	a, aIsSecret := p.getShareValue(aID)
+	b, bIsSecret := p.getShareValue(bID)
+
+	res := new(big.Int)
+	res.Sub(a, b)
+	res.Mod(res, p.prime)
+
+	secret := aIsSecret || bIsSecret
+	p.setShareValue(cID, res, secret)
 }
 
 //SubFromOpen ...
 func (p *Player) SubFromOpen(aShare *big.Int, bID, cID string) {
+	b, bIsSecret := p.getShareValue(bID)
+
 	res := new(big.Int)
-	res.Sub(aShare, p.getShareValue(bID))
+	res.Sub(aShare, b)
 	res.Mod(res, p.prime)
-	p.shareLock.Lock()
-	p.shares[cID] = res
-	p.shareLock.Unlock()
+
+	p.setShareValue(cID, res, bIsSecret)
 }
 
 //SubOpen ...
-func (p *Player) SubOpen(aId string, bShare *big.Int, cId string) {
+func (p *Player) SubOpen(aID string, bID *big.Int, cID string) {
+	a, aIsSecret := p.getShareValue(aID)
+
 	res := new(big.Int)
-	res.Add(p.getShareValue(aId), bShare)
+	res.Add(a, bID)
 	res.Mod(res, p.prime)
-	p.shareLock.Lock()
-	p.shares[cId] = res
-	p.shareLock.Unlock()
+
+	p.setShareValue(cID, res, aIsSecret)
 }
 
 //Scale ...
-func (p *Player) Scale(scalar *big.Int, aIdentifier, bIdentifier string) {
-	sum := new(big.Int)
-	sum.Mul(p.getShareValue(aIdentifier), scalar)
-	sum.Mod(sum, p.prime)
-	p.shareLock.Lock()
-	p.shares[bIdentifier] = sum
-	p.shareLock.Unlock()
+func (p *Player) Scale(scalar *big.Int, aID, bID string) {
+	a, aIsSecret := p.getShareValue(aID)
+
+	res := new(big.Int)
+	res.Mul(a, scalar)
+	res.Mod(res, p.prime)
+
+	p.setShareValue(bID, res, aIsSecret)
 }
 
 //Multiply ...
-func (p *Player) Multiply(aIdentifier, bIdentifier, cIdentifier string) {
+func (p *Player) Multiply(aID, bID, cID string) {
+	a, aIsSecret := p.getShareValue(aID)
+	b, bIsSecret := p.getShareValue(bID)
+
 	//Compute and secret share product of local shares
-	localProduct := new(big.Int)
-	localProduct.Mul(p.getShareValue(aIdentifier), p.getShareValue(bIdentifier))
+	localProduct := new(big.Int).Mul(a, b)
+
+	cIsSecret := aIsSecret || bIsSecret
+	shouldReconconstruct := aIsSecret && bIsSecret
+	if !shouldReconconstruct {
+		//Multiplication does not need communication
+		p.setShareValue(cID, localProduct, cIsSecret)
+		return
+	}
+
+	//Secret multiplication
 	for _, share := range p.ss.Share(localProduct) {
 		ms := multiplicationShare{
 			recombinationShare: bigshamir.RecombinationShare{
 				SecretShare: share,
 				Index:       p.index,
 			},
-			id: cIdentifier,
+			id: cID,
 		}
 		go p.Send(ms, share.X)
 	}
 
 	//Wait for 2t+1 sharings of local products
-	p.shareLock.RLock()
-	shares := p.multShares[cIdentifier]
-	p.shareLock.RUnlock()
-	for shares == nil || len(shares) < p.threshold*2+1 {
-		time.Sleep(time.Millisecond)
-		p.shareLock.RLock()
-		shares = p.multShares[cIdentifier]
-		p.shareLock.RUnlock()
+	p.multShareLock.RLock()
+	shares := p.multShares[cID]
+	p.multShareLock.RUnlock()
+	if len(shares) >= p.threshold*2+1 {
+		p.recombineMultiplicationShares(cID, shares)
 	}
+}
 
+func (p *Player) recombineMultiplicationShares(cID string, shares []multiplicationShare) {
 	multShares := make([]bigshamir.RecombinationShare, len(shares))
 	for i := range shares {
 		multShares[i] = shares[i].recombinationShare
 	}
 	cShareValue := p.ss.RecombineMultiplicationShares(multShares)
 
-	p.shareLock.Lock()
-	p.shares[cIdentifier] = cShareValue
-	p.shareLock.Unlock()
+	p.setShareValue(cID, cShareValue, true)
 }
 
 //Compare takes shares of aShare and b as input and outputs 1 iff aShare > b
@@ -240,36 +316,40 @@ func (p *Player) Compare(aID, bID, cID string) {
 	bBitIDs := make([]string, p.l+1)
 	for i := range aBitIDs {
 		aBitIDs[i] = cID + "=" + aID + ">" + bID +
-			"_:_bits_of_" + aID + "_index_" + strconv.Itoa(i)
+			"_:_bits_of_a_" + aID + "_index_" + strconv.Itoa(i)
 		bBitIDs[i] = cID + "=" + aID + ">" + bID +
-			"_:_bits_of_" + bID + "_index_" + strconv.Itoa(i)
+			"_:_bits_of_b_" + bID + "_index_" + strconv.Itoa(i)
 	}
-	p.bits(aID, aBitIDs)
+	go p.bits(aID, aBitIDs) //compute bits in parallel
 	p.bits(bID, bBitIDs)
 	p.bitCompare(aBitIDs, bBitIDs, cID)
 }
 
 func (p *Player) bits(ID string, resultBitIDs []string) {
-	rID, rBitIDs := p.randomSolvedBits(ID)
+	rID, rBitIDs := p.randomSolvedBits(resultBitIDs[0])
 	p.Sub(ID, rID, resultBitIDs[0]+"_bits_c") //c = a - r
 	p.Open(resultBitIDs[0] + "_bits_c")
 	c := p.Reconstruct(resultBitIDs[0] + "_bits_c")
+	// fmt.Println(c)
 
 	//Compute bit sharing of sum of r and c, i.e. bit sharing of ID
 	cBitIDs := make([]string, p.l+1)
 	dBitIDs := make([]string, p.l+1)
 	pBitIDs := make([]string, p.l+1)
 	epBitIDs := make([]string, p.l+1)
-	p.shareLock.Lock()
+
+	p.shareLock.RLock()
+	bitsAreSecret := p.secrets[ID]
+	p.shareLock.RUnlock()
+
 	for i := 0; i <= p.l; i++ {
 		cBitIDs[i] = resultBitIDs[i] + "_bits_cBits"
 		dBitIDs[i] = resultBitIDs[i] + "_bits_dBits"
 		pBitIDs[i] = resultBitIDs[i] + "_bits_pBits"
 		epBitIDs[i] = resultBitIDs[i] + "_bits_cepBits"
-		p.shares[cBitIDs[i]] = big.NewInt(int64(c.Bit(i)))
-		p.shares[pBitIDs[i]] = big.NewInt(int64(p.prime.Bit(i)))
+		go p.setShareValue(cBitIDs[i], big.NewInt(int64(c.Bit(i))), bitsAreSecret)
+		go p.setShareValue(pBitIDs[i], big.NewInt(int64(p.prime.Bit(i))), false)
 	}
-	p.shareLock.Unlock()
 
 	p.bitAdd(rBitIDs, cBitIDs, dBitIDs)
 	e := resultBitIDs[0] + "_bits_compareBits_e"
@@ -287,22 +367,12 @@ func (p *Player) bitCompare(aBitIDs, bBitIDs []string, cBitID string) {
 	xorShareIDs := make([]string, p.l+1)
 	for i := 0; i <= p.l; i++ {
 		xorShareIDs[i] = cBitID + "_bitCompare_xor" + strconv.Itoa(i)
-		ithBitOfAShare := p.getShareValue(aBitIDs[i])
-		ithBitOfBShare := p.getShareValue(bBitIDs[i])
-		sum := new(big.Int).Add(ithBitOfAShare, ithBitOfBShare) //[a_i]+[b_i]
-		multID := xorShareIDs[i] + "_tmp"
-		p.Multiply(aBitIDs[i], bBitIDs[i], multID)
-		xorProduct := p.getShareValue(multID)
-		xorProduct.Mul(big.NewInt(2), xorProduct) //2[a_i][b_i]
-		xorProduct.Mod(xorProduct, p.prime)
-		sum.Sub(sum, xorProduct) //[a_i]+[b_i] - 2[a_i][b_i]
-		sum.Mod(sum, p.prime)
-
-		p.shareLock.Lock()
-		p.shares[xorShareIDs[i]] = sum
-		p.shareLock.Unlock()
+		go p.bitXor(aBitIDs[i], bBitIDs[i], xorShareIDs[i])
 	}
+
+	//Compute MS1(XOR), i.e. most significant 1 in max(a,b)
 	dBitIDs := p.mostSignificant1(xorShareIDs)
+
 	eBitIDs := make([]string, p.l+1)
 	for i := range eBitIDs {
 		eBitIDs[i] = cBitID + "_bitCompare_e" + strconv.Itoa(i)
@@ -310,29 +380,29 @@ func (p *Player) bitCompare(aBitIDs, bBitIDs []string, cBitID string) {
 	}
 	cShare := big.NewInt(0)
 	for i := range eBitIDs {
-		cShare.Add(cShare, p.getShareValue(eBitIDs[i]))
+		eI, _ := p.getShareValue(eBitIDs[i])
+		cShare.Add(cShare, eI)
 	}
 	cShare.Mod(cShare, p.prime)
 
-	p.shareLock.Lock()
-	p.shares[cBitID] = cShare
-	p.shareLock.Unlock()
+	p.shareLock.RLock()
+	resultIsSecret := p.secrets[aBitIDs[0]] || p.secrets[bBitIDs[0]]
+	p.shareLock.RUnlock()
+
+	p.setShareValue(cBitID, cShare, resultIsSecret)
 }
 
 func (p *Player) bitXor(aBitID, bBitID, cBitID string) *big.Int {
 	p.Multiply(aBitID, bBitID, cBitID+"_xor_tmp")
-	aShare := p.getShareValue(aBitID)
-	bShare := p.getShareValue(bBitID)
-	xorShare := p.getShareValue(cBitID + "_xor_tmp") //ab
-	xorShare.Mul(big.NewInt(2), xorShare)            //2ab
-	xorShare.Neg(xorShare)                           //-2ab
-	xorShare.Add(xorShare, aShare)                   //a - 2ab
-	xorShare.Add(xorShare, bShare)                   //a+b-2ab
+	aShare, aIsSecret := p.getShareValue(aBitID)
+	bShare, bIsSecret := p.getShareValue(bBitID)
+	xorShare, _ := p.getShareValue(cBitID + "_xor_tmp") //ab
+	xorShare.Mul(big.NewInt(2), xorShare)               //2ab
+	xorShare.Neg(xorShare)                              //-2ab
+	xorShare.Add(xorShare, aShare)                      //a - 2ab
+	xorShare.Add(xorShare, bShare)                      //a+b-2ab
 
-	p.shareLock.Lock()
-	delete(p.shares, cBitID+"_xor_tmp")
-	p.shares[cBitID] = xorShare //todo get rid of this?
-	p.shareLock.Unlock()
+	p.setShareValue(cBitID, xorShare, aIsSecret || bIsSecret)
 
 	return xorShare
 }
@@ -341,43 +411,41 @@ func (p *Player) fullAdder(aBitID, bBitID, carryInBitID, carryOutBitID, cBitID s
 	//carry_out = (a & b) | (a & carry_in) | (b & carry_in)
 	//			= ! (!(a & b) & !(a & carry_in) & !(b & carry_in))
 	//			= 1 - ((1 - a * b) * (1 - a * carry_in) * (1 - b * carry_in))
-
-	p.Multiply(aBitID, bBitID, cBitID+"_a&b")
+	p.Multiply(aBitID, bBitID, cBitID+"_a&b") //todo in parallel
 	p.Multiply(aBitID, carryInBitID, cBitID+"_a&carryIn")
 	p.Multiply(bBitID, carryInBitID, cBitID+"_b&carryIn")
 
-	ab := p.getShareValue(cBitID + "_a&b")
-	aCarryIn := p.getShareValue(cBitID + "_a&carryIn")
+	ab, resultIsSecret := p.getShareValue(cBitID + "_a&b")
+	aCarryIn, _ := p.getShareValue(cBitID + "_a&carryIn")
 
-	p.shareLock.Lock()
-	p.shares[cBitID+"_!a&b"] = bitNot(ab)
-	p.shares[cBitID+"_!a&carryIn"] = bitNot(aCarryIn)
-	p.shareLock.Unlock()
+	p.setShareValue(cBitID+"_!a&b", bitNot(ab), resultIsSecret)
+	p.setShareValue(cBitID+"_!a&carryIn", bitNot(aCarryIn), resultIsSecret)
+
 	p.Multiply(cBitID+"_!a&b", cBitID+"_!a&carryIn", cBitID+"_!a&b_&_!a&carryIn")
 
-	bCarryIn := p.getShareValue(cBitID + "_b&carryIn")
-	p.shareLock.Lock()
-	p.shares[cBitID+"_!b&carryIn"] = bitNot(bCarryIn)
-	p.shareLock.Unlock()
+	bCarryIn, _ := p.getShareValue(cBitID + "_b&carryIn")
+	p.setShareValue(cBitID+"_!b&carryIn", bitNot(bCarryIn), resultIsSecret)
 
 	p.Multiply(cBitID+"_!a&b_&_!a&carryIn", cBitID+"_!b&carryIn", cBitID+"_disjunct")
 
-	carryOutShare := bitNot(p.getShareValue(cBitID + "_disjunct"))
+	disjunctShare, _ := p.getShareValue(cBitID + "_disjunct")
+	carryOutShare := bitNot(disjunctShare)
 	carryOutShare.Mod(carryOutShare, p.prime)
-	p.shareLock.Lock()
-	p.shares[carryOutBitID] = carryOutShare
-	p.shareLock.Unlock()
+
+	p.setShareValue(carryOutBitID, carryOutShare, resultIsSecret)
 
 	//c = a + b + c - 2 * carry_out
 	resBitShare := new(big.Int).Mul(big.NewInt(2), carryOutShare)
 	resBitShare.Neg(resBitShare)
-	resBitShare.Add(resBitShare, p.getShareValue(aBitID))
-	resBitShare.Add(resBitShare, p.getShareValue(bBitID))
-	resBitShare.Add(resBitShare, p.getShareValue(carryInBitID))
+	a, _ := p.getShareValue(aBitID)
+	b, _ := p.getShareValue(bBitID)
+	carryIn, _ := p.getShareValue(carryInBitID)
+	resBitShare.Add(resBitShare, a)
+	resBitShare.Add(resBitShare, b)
+	resBitShare.Add(resBitShare, carryIn)
 	resBitShare.Mod(resBitShare, p.prime)
-	p.shareLock.Lock()
-	p.shares[cBitID] = resBitShare
-	p.shareLock.Unlock()
+
+	p.setShareValue(cBitID, resBitShare, resultIsSecret)
 }
 
 func bitNot(aBitShare *big.Int) *big.Int {
@@ -393,9 +461,8 @@ func (p *Player) bitAdd(aBitIDs, bBitIDs, resBitIDs []string) {
 	for i := range resBitIDs {
 		if i == 0 {
 			//Carry in = 0
-			p.shareLock.Lock()
-			p.shares[resBitIDs[i]+"_carry_in_0"] = big.NewInt(0)
-			p.shareLock.Unlock()
+			p.setShareValue(resBitIDs[i]+"_carry_in_0", big.NewInt(0), false)
+			//initial carry is not secret
 			carryInID := resBitIDs[i] + "_carry_in_0"
 			carryOutID := resBitIDs[i] + "_carry_out_0"
 			p.fullAdder(aBitIDs[i], bBitIDs[i], carryInID, carryOutID, resBitIDs[i])
@@ -417,18 +484,16 @@ func (p *Player) bitSub(aBitIDs, bBitIDs, resBitIDs []string) {
 	flippedBBitIDs := make([]string, len(bBitIDs))
 	for i := range flippedBBitIDs {
 		flippedBBitIDs[i] = bBitIDs[i] + "_sub_flipped"
-		flippedBit := bitNot(p.getShareValue(bBitIDs[i]))
-		p.shareLock.Lock()
-		p.shares[flippedBBitIDs[i]] = flippedBit
-		p.shareLock.Unlock()
+		bit, isSecret := p.getShareValue(bBitIDs[i])
+		flippedBit := bitNot(bit)
+		p.setShareValue(flippedBBitIDs[i], flippedBit, isSecret)
 	}
 
 	for i := range resBitIDs {
 		if i == 0 {
 			//Carry in = 1
-			p.shareLock.Lock()
-			p.shares[resBitIDs[i]+"_carry_in_0"] = big.NewInt(1)
-			p.shareLock.Unlock()
+			p.setShareValue(resBitIDs[i]+"_carry_in_0", big.NewInt(1), false)
+			//initial carry is not secret
 			carryInID := resBitIDs[i] + "_carry_in_0"
 			carryOutID := resBitIDs[i] + "_carry_out_0"
 			p.fullAdder(aBitIDs[i], flippedBBitIDs[i], carryInID, carryOutID, resBitIDs[i])
@@ -460,7 +525,7 @@ func (p *Player) randomSolvedBits(identifier string) (fieldElemID string, bitIDs
 		//compare bits of P and r usign "bitCompare" optimized for only one secret set of bits
 		//Compute sharing of XOR
 		for i := 0; i <= p.l; i++ {
-			ithBitOfRShare := p.getShareValue(bitIDs[i])
+			ithBitOfRShare, _ := p.getShareValue(bitIDs[i])
 			ithBitOfPrime := big.NewInt(int64(p.prime.Bit(i)))
 			xorProduct := big.NewInt(2)
 			xorProduct.Mul(xorProduct, ithBitOfPrime)
@@ -469,9 +534,7 @@ func (p *Player) randomSolvedBits(identifier string) (fieldElemID string, bitIDs
 			ithBitOfXor := new(big.Int).Add(ithBitOfRShare, ithBitOfPrime)
 			ithBitOfXor.Sub(ithBitOfXor, xorProduct)
 			ithBitOfXor.Mod(ithBitOfXor, p.prime)
-			p.shareLock.Lock()
-			p.shares[xorBitIdentifiers[i]] = ithBitOfXor
-			p.shareLock.Unlock()
+			p.setShareValue(xorBitIdentifiers[i], ithBitOfXor, true)
 		}
 
 		//Find most signigicant bit
@@ -479,7 +542,7 @@ func (p *Player) randomSolvedBits(identifier string) (fieldElemID string, bitIDs
 
 		comparisonBitShare := big.NewInt(0)
 		for i := range dBitIDs {
-			ithBitOfD := p.getShareValue(dBitIDs[i])
+			ithBitOfD, _ := p.getShareValue(dBitIDs[i])
 			ithBitOfPrime := big.NewInt(int64(p.prime.Bit(i)))
 			ithBitOfPrime.Mul(ithBitOfPrime, ithBitOfD)
 			comparisonBitShare.Add(comparisonBitShare, ithBitOfPrime)
@@ -510,15 +573,14 @@ func (p *Player) randomSolvedBits(identifier string) (fieldElemID string, bitIDs
 
 	fieldElementShare := big.NewInt(0)
 	for i := range bitIDs {
-		term := new(big.Int).Set(p.getShareValue(bitIDs[i]))
+		bit, _ := p.getShareValue(bitIDs[i])
+		term := new(big.Int).Set(bit)
 		term.Lsh(term, uint(i))
 		fieldElementShare.Add(fieldElementShare, term)
 	}
 	fieldElementShare.Mod(fieldElementShare, p.prime)
 
-	p.shareLock.Lock()
-	p.shares[fieldElemID] = fieldElementShare
-	p.shareLock.Unlock()
+	p.setShareValue(fieldElemID, fieldElementShare, true)
 
 	return
 }
@@ -546,10 +608,11 @@ func (p *Player) RandomBit(identifier string) {
 		//Add at least t+1 shares to have randomness
 		//in the passive corruption model we add all n shares
 		//to avoid having to agree on which t+1 shares
+		time.Sleep(time.Millisecond)
 		p.randomBitLock.RLock()
 		shares := p.randFieldElemShares[iterationIdentifier]
 		p.randomBitLock.RUnlock()
-		for shares == nil || len(shares) < p.n {
+		for len(shares) < p.n {
 			//todo seems like the time to use sync.Waitgroup
 			time.Sleep(time.Millisecond)
 			p.randomBitLock.RLock()
@@ -579,10 +642,11 @@ func (p *Player) RandomBit(identifier string) {
 			p.Send(aSquaredShare, i)
 		}
 
+		time.Sleep(time.Millisecond)
 		p.randomBitLock.RLock()
 		aSquaredShares := p.randomBitASquaredShares[iterationIdentifier]
 		p.randomBitLock.RUnlock()
-		for aSquaredShares == nil || len(aSquaredShares) < p.n {
+		for len(aSquaredShares) < p.n {
 			//todo seems like the time to use sync.Waitgroup
 			time.Sleep(time.Millisecond)
 			p.randomBitLock.RLock()
@@ -611,9 +675,8 @@ func (p *Player) RandomBit(identifier string) {
 	twoInverse := new(big.Int).ModInverse(big.NewInt(2), p.prime)
 	r := new(big.Int).Mul(twoInverse, cShareVal)
 	r.Mod(r, p.prime)
-	p.shareLock.Lock()
-	p.shares[identifier] = r
-	p.shareLock.Unlock()
+
+	p.setShareValue(identifier, r, true)
 }
 
 func (p *Player) mostSignificant1(bitIds []string) (resBitIds []string) {
@@ -645,7 +708,7 @@ func (p *Player) Send(data interface{}, receiver int) {
 	if receiver == p.index {
 		go p.Handle(data, p.index)
 	} else {
-		p.network.Send(data, receiver)
+		go p.network.Send(data, receiver)
 	}
 }
 
@@ -655,20 +718,31 @@ func (p *Player) Handle(data interface{}, sender int) {
 	case identifiedShare:
 		if t.point.X == p.index {
 			//We have received aShare regular share
-			p.shareLock.Lock()
-			p.shares[t.id] = t.point.Y
-			p.shareLock.Unlock()
+			p.setShareValue(t.id, t.point.Y, true)
 		} else {
 			//We have received another party's share
-			p.shareLock.Lock()
-			p.reconstructionShares[t.id] = append(p.reconstructionShares[t.id], t.point)
-			//todo adding own index?
-			p.shareLock.Unlock()
+			p.reconstructionShareLock.Lock()
+			shares := append(p.reconstructionShares[t.id], t.point)
+			if len(shares) == p.threshold+1 {
+				//Notify waiting routines
+				for _, channel := range p.reconstructionShareBlockingChannels[t.id] {
+					channel <- shares
+				}
+				delete(p.reconstructionShareBlockingChannels, t.id)
+			}
+			p.reconstructionShares[t.id] = shares
+			p.reconstructionShareLock.Unlock()
 		}
 	case multiplicationShare:
-		p.shareLock.Lock()
-		p.multShares[t.id] = append(p.multShares[t.id], t)
-		p.shareLock.Unlock()
+		p.multShareLock.Lock()
+		shares := append(p.multShares[t.id], t)
+		if len(shares) < p.threshold*2+1 {
+			p.multShares[t.id] = shares
+			p.multShareLock.Unlock()
+		} else {
+			p.multShareLock.Unlock()
+			p.recombineMultiplicationShares(t.id, shares)
+		}
 	case localRandomFieldElementShare:
 		p.randomBitLock.Lock()
 		p.randFieldElemShares[t.id] = append(p.randFieldElemShares[t.id], t)
