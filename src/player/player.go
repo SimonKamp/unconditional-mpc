@@ -353,6 +353,7 @@ func (p *Player) Compare(aID, bID, cID string) {
 	}
 	go p.bits(aID, aBitIDs) //compute bits in parallel
 	p.bits(bID, bBitIDs)
+
 	p.bitCompare(aBitIDs, bBitIDs, cID)
 }
 
@@ -371,13 +372,6 @@ func (p *Player) bits(ID string, resultBitIDs []string) {
 	p.Sub(ID, rID, resultBitIDs[0]+"_bits_c") //c = a - r
 	p.Open(resultBitIDs[0] + "_bits_c")
 	c := p.Reconstruct(resultBitIDs[0] + "_bits_c")
-
-	// p.Open(ID)                                             //for testing
-	// a := p.Reconstruct(ID)                                 //for testing
-	// p.Open(rID)                                            //for testing
-	// r := p.Reconstruct(rID)                                //for testing
-	// fmt.Println(ID, "Field element:", a, "c:", c, "r:", r) //for testing
-	// fmt.Println("r bits", p.openBits(rBitIDs))
 
 	//Compute bit sharing of sum of r and c, i.e. bit sharing of ID
 	cBitIDs := make([]string, p.l+1)
@@ -407,15 +401,6 @@ func (p *Player) bits(ID string, resultBitIDs []string) {
 	}
 
 	p.bitSub(dBitIDs, epBitIDs, resultBitIDs)
-
-	// fmt.Println("c bits", p.openBits(cBitIDs))
-	// fmt.Println("d bits", p.openBits(dBitIDs))
-	// p.Open(e)
-	// eVal := p.Reconstruct(e)
-	// fmt.Println("e", eVal)
-	// fmt.Println("ep bits", p.openBits(epBitIDs))
-	// fmt.Println("f bits", p.openBits(resultBitIDs))
-
 }
 
 func (p *Player) bitCompare(aBitIDs, bBitIDs []string, cBitID string) {

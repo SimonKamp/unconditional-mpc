@@ -161,7 +161,7 @@ func TestCompare(t *testing.T) {
 	ids := make([]string, 7)
 	for i := range ids {
 		id := strconv.Itoa(i)
-		parties[1].Share(big.NewInt(3), id)
+		parties[1].Share(big.NewInt(int64(i)), id)
 		ids[i] = id
 	}
 	for i := range ids {
