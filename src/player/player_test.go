@@ -58,7 +58,7 @@ func TestAdd(t *testing.T) {
 
 func TestMultiply(t *testing.T) {
 	testMult := func(a, b, prime int64) {
-		parties := setting(prime, 1, 3)
+		parties := setting(prime, 2, 5)
 		parties[1].Share(big.NewInt(a), "a")
 		parties[2].Share(big.NewInt(b), "b")
 		for _, party := range parties {
@@ -285,10 +285,10 @@ func TestBitCompare(t *testing.T) {
 }
 
 func TestBitSub(t *testing.T) {
-	prime := int64(7)
+	prime := int64(11)
 	parties := setting(prime, 1, 3)
 
-	iterations := 7
+	iterations := 11
 
 	parties[1].Share(big.NewInt(0), "0")
 	parties[2].Share(big.NewInt(1), "1")
@@ -328,9 +328,9 @@ func TestBits(t *testing.T) {
 	prime := 7
 	parties := setting(int64(prime), 1, 3)
 
-	for i := 0; i < prime; i++ {
+	for i := 0; i < prime-5; /*TODO*/ i++ {
 		input := big.NewInt(int64(i))
-		test := input.String()
+		test := input.String() + "fieldElement"
 		parties[1].Share(input, test)
 
 		resultBitsIDs := make([]string, parties[1].prime.BitLen()+1)
@@ -346,9 +346,48 @@ func TestBits(t *testing.T) {
 		}
 
 		for bitIndex := range resultBitsIDs {
-			//TODO fails on 0
 			shouldBe(int64(input.Bit(bitIndex)),
 				parties[1].Reconstruct(resultBitsIDs[bitIndex]), resultBitsIDs[bitIndex], t)
+		}
+	}
+
+}
+
+func TestMostSignificant1(t *testing.T) {
+	prime := 19
+	parties := setting(int64(prime), 1, 3)
+
+	for i := 0; i < prime; i++ {
+		input := big.NewInt(int64(i))
+		test := input.String()
+		parties[1].Share(input, test)
+
+		bitsIDs := make([]string, parties[1].prime.BitLen()+1)
+		for bitIndex := range bitsIDs {
+			bitsIDs[bitIndex] = test + "_index_" + strconv.Itoa(bitIndex)
+		}
+
+		go parties[1].bits(test, bitsIDs)
+		go parties[2].bits(test, bitsIDs)
+		go parties[3].bits(test, bitsIDs)
+		go parties[1].mostSignificant1(bitsIDs)
+		go parties[2].mostSignificant1(bitsIDs)
+		ms1BitsIDs := parties[3].mostSignificant1(bitsIDs)
+		for bitIndex := range ms1BitsIDs {
+			for _, party := range parties {
+				go party.Open(ms1BitsIDs[bitIndex])
+			}
+		}
+
+		for bitIndex := range bitsIDs {
+			var resultBit int64
+			if bitIndex == input.BitLen()-1 {
+				resultBit = 1
+			} else {
+				resultBit = 0
+			}
+			shouldBe(resultBit,
+				parties[1].Reconstruct(ms1BitsIDs[bitIndex]), ms1BitsIDs[bitIndex], t)
 		}
 	}
 
