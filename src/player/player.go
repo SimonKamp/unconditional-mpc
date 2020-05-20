@@ -364,18 +364,6 @@ func (p *Player) GreaterThanOrEqual(aID, bID, cID string) {
 	p.SubFromConstant(big.NewInt(1), bGreaterThanAID, cID)
 }
 
-//LessThan takes shares of aShare and b as input and outputs 1 iff a < b, and 0 otherwise
-func (p *Player) LessThan(aID, bID, cID string) {
-	p.GreaterThan(bID, aID, cID)
-}
-
-//LessThanOrEqual takes shares of aShare and b as input and outputs 1 iff a <= b, and 0 otherwise
-func (p *Player) LessThanOrEqual(aID, bID, cID string) {
-	aGreaterThanBID := cID + "_LessThanOrEqual_a>b"
-	p.GreaterThan(aID, bID, aGreaterThanBID)
-	p.SubFromConstant(big.NewInt(1), aGreaterThanBID, cID)
-}
-
 //NotEqual takes shares of aShare and b as input and outputs 1 iff a != b, and 0 otherwise
 func (p *Player) NotEqual(aID, bID, cID string) {
 	//todo temporary solution, should use Fermats little thm. and repeated squaring
@@ -387,6 +375,7 @@ func (p *Player) NotEqual(aID, bID, cID string) {
 	//1 if one is greater than the other
 	//0 if a == b
 	p.Add(aGreaterThanBID, bGreaterThanAID, cID)
+
 }
 
 //Equal takes shares of aShare and b as input and outputs 1 iff a == b, and 0 otherwise
@@ -830,24 +819,46 @@ func (p *Player) RegisterNetwork(network network.Network) {
 type instruction = []string
 
 //Run executes the computations specified by instructions
+/*
+INPUT [party_index(number)] [id]
+OUTPUT [value] [output_name]
+
+MOVE [value] [id]
+
+PLUS [value] [value] [id]
+MINUS [value] [value] [id]
+MULTIPLY [value] [value] [id]
+
+EQUALS [value] [value] [id]
+NOT_EQUALS [value] [value] [id]
+GT [value] [value] [id]
+GTE [value] [value] [id]
+LT [value] [value] [id]
+LTE [value] [value] [id]
+
+LEAK [id] [id] ###################################### not implemented
+
+PROGRAM_POINT [number]
+JMP [number]
+JZ [value] [number]
+
+RANDOM_BIT [id] ###################################### Expose??
+*/
 func (p *Player) Run() map[string]*big.Int {
 	output := make(map[string]*big.Int)
-	//["ADD", "X", "Y", "Z"]
-	//p.Add("X", "Y", "Z")
-	//["MUL", "X", "Y", "Z"]
-	//p.Multiply("X", "Y", "Z")
 
-	//["INPUT", "2", "ID123"]
-	//if p.index == strconv("2") {p.Share(readinput("ID123"), "ID123")}
+	labels := labelIndexes(p.instructions)
 
-	//["LT", "X", "Y", "Z"]
-
-	for _, insn := range p.instructions {
+	instructionIndex := -1
+	for instructionIndex+1 < len(p.instructions) {
+		instructionIndex++
+		insn := p.instructions[instructionIndex]
 		if len(insn) == 0 {
 			continue
 		}
 		switch insn[0] {
-		case "INPUT": //["INPUT", index of party, id]
+		case "INPUT":
+			// INPUT [party_index(number)] [id]
 			index, err := strconv.Atoi(insn[1])
 			if err != nil {
 				fmt.Println()
@@ -857,32 +868,206 @@ func (p *Player) Run() map[string]*big.Int {
 			}
 			value := p.readInput(insn[2])
 			p.Share(value, insn[2])
-		case "ADD": //["ADD", "ID", "ID", "ID"]
-			p.Add(insn[1], insn[2], insn[3])
-		case "MULTIPLY": //["MULTIPLY", "ID", "ID", "ID"]
-			p.Multiply(insn[1], insn[2], insn[3])
-		case "OPEN": //["OPEN", ID]
+		case "OUTPUT":
+			// OUTPUT [value] [output_name]
+			constant, isNumber := readInt(insn[1])
+			if isNumber {
+				output[insn[2]] = constant
+				continue
+			}
 			p.Open(insn[1])
-		case "OUTPUT": //["OUTPUT", ID]
-			output[insn[1]] = p.Reconstruct(insn[1])
-		case "SCALE": //["SCALE", "NUM", "ID", "ID"]
-			scalar, isNumber := new(big.Int).SetString(insn[1], 10) //todo NaN?
+			output[insn[2]] = p.Reconstruct(insn[1])
+
+		case "MOVE":
+			// MOVE [value] [id]
+			val, isNumber := readInt(insn[1])
+			isSecret := false
 			if !isNumber {
+				val, isSecret = p.getShareValue(insn[1])
+			}
+			p.setShareValue(insn[2], val, isSecret)
+
+		case "PLUS":
+			// PLUS [value] [value] [id]
+			constant, isNumber := readInt(insn[1])
+			if isNumber {
+				p.AddConstant(constant, insn[2], insn[3])
 				continue
 			}
-			p.Scale(scalar, insn[2], insn[3])
-		case "ADD_CONSTANT": //["ADD_CONSTANT", "NUM", "ID", "ID"]
-			constant, isNumber := new(big.Int).SetString(insn[1], 10) //todo NaN?
-			if !isNumber {
+			constant, isNumber = readInt(insn[2])
+			if isNumber {
+				p.AddConstant(constant, insn[1], insn[3])
 				continue
 			}
-			p.AddConstant(constant, insn[2], insn[3])
+			p.Add(insn[1], insn[2], insn[3])
+		case "MINUS":
+			// MINUS [value] [value] [id]
+			constant, isNumber := readInt(insn[1])
+			if isNumber {
+				p.SubFromConstant(constant, insn[2], insn[3])
+				continue
+			}
+			constant, isNumber = readInt(insn[2])
+			if isNumber {
+				p.SubConstant(insn[1], constant, insn[3])
+				continue
+			}
+			p.Sub(insn[1], insn[2], insn[3])
+		case "MULTIPLY":
+			// MULTIPLY [value] [value] [id]
+			constant, isNumber := readInt(insn[1])
+			if isNumber {
+				p.Scale(constant, insn[2], insn[3])
+				continue
+			}
+			constant, isNumber = readInt(insn[2])
+			if isNumber {
+				p.Scale(constant, insn[1], insn[3])
+				continue
+			}
+			p.Multiply(insn[1], insn[2], insn[3])
+		case "GT":
+			// GT [value] [value] [id]
+			constant, isNumber := readInt(insn[1])
+			constantID := insn[3] + "_run_tmp"
+			if isNumber {
+				p.setShareValue(constantID, constant, false)
+				p.GreaterThan(constantID, insn[2], insn[3])
+				continue
+			}
+			constant, isNumber = readInt(insn[2])
+			if isNumber {
+				p.setShareValue(constantID, constant, false)
+				p.GreaterThan(insn[1], constantID, insn[3])
+				continue
+			}
+			p.GreaterThan(insn[1], insn[2], insn[3])
+		case "LT":
+			// LT [value] [value] [id]
+			constant, isNumber := readInt(insn[1])
+			constantID := insn[3] + "_run_tmp"
+			if isNumber {
+				p.setShareValue(constantID, constant, false)
+				p.GreaterThan(insn[2], constantID, insn[3])
+				continue
+			}
+			constant, isNumber = readInt(insn[2])
+			if isNumber {
+				p.setShareValue(constantID, constant, false)
+				p.GreaterThan(constantID, insn[1], insn[3])
+				continue
+			}
+			p.GreaterThan(insn[2], insn[1], insn[3])
+		case "GTE":
+			// GTE [value] [value] [id]
+			constant, isNumber := readInt(insn[1])
+			constantID := insn[3] + "_run_tmp"
+			if isNumber {
+				p.setShareValue(constantID, constant, false)
+				p.GreaterThanOrEqual(constantID, insn[2], insn[3])
+				continue
+			}
+			constant, isNumber = readInt(insn[2])
+			if isNumber {
+				p.setShareValue(constantID, constant, false)
+				p.GreaterThanOrEqual(insn[1], constantID, insn[3])
+				continue
+			}
+			p.GreaterThanOrEqual(insn[1], insn[2], insn[3])
+		case "LTE":
+			// LTE [value] [value] [id]
+			constant, isNumber := readInt(insn[1])
+			constantID := insn[3] + "_run_tmp"
+			if isNumber {
+				p.setShareValue(constantID, constant, false)
+				p.GreaterThanOrEqual(insn[2], constantID, insn[3])
+				continue
+			}
+			constant, isNumber = readInt(insn[2])
+			if isNumber {
+				p.setShareValue(constantID, constant, false)
+				p.GreaterThanOrEqual(constantID, insn[1], insn[3])
+				continue
+			}
+			p.GreaterThanOrEqual(insn[2], insn[1], insn[3])
+		case "EQUALS":
+			// EQUALS [value] [value] [id]
+			constant, isNumber := readInt(insn[1])
+			constantID := insn[3] + "_run_tmp"
+			if isNumber {
+				p.setShareValue(constantID, constant, false)
+				p.Equal(constantID, insn[2], insn[3])
+				continue
+			}
+			constant, isNumber = readInt(insn[2])
+			if isNumber {
+				p.setShareValue(constantID, constant, false)
+				p.Equal(constantID, insn[1], insn[3])
+				continue
+			}
+			p.Equal(insn[1], insn[2], insn[3])
+		case "NOT_EQUALS":
+			// NOT_EQUALS [value] [value] [id]
+			constant, isNumber := readInt(insn[1])
+			constantID := insn[3] + "_run_tmp"
+			if isNumber {
+				p.setShareValue(constantID, constant, false)
+				p.NotEqual(constantID, insn[2], insn[3])
+				continue
+			}
+			constant, isNumber = readInt(insn[2])
+			if isNumber {
+				p.setShareValue(constantID, constant, false)
+				p.NotEqual(constantID, insn[1], insn[3])
+				continue
+			}
+			p.NotEqual(insn[1], insn[2], insn[3])
 		case "RANDOM_BIT":
+			// RANDOM_BIT [id]
 			p.RandomBit(insn[1])
+		case "PROGRAM_POINT":
+			// PRORGAM_POINT [value]
+			continue
+		case "JMP":
+			// JMP [label]
+			instructionIndex = labels[insn[1]]
+		case "JZ":
+			// JZ [value] [label]
+			constant, isNumber := readInt(insn[1])
+			if isNumber { // TODO  ########################################## Can value ever be constant?
+				if constant.Sign() == 0 {
+					instructionIndex = labels[insn[2]]
+				} else {
+					continue
+				}
+			}
+			constant, isSecret := p.getShareValue(insn[1])
+			if isSecret {
+				panic("branching on secret condition")
+			}
+			if constant.Sign() == 0 {
+				instructionIndex = labels[insn[2]]
+			}
+		default:
+			fmt.Println("Unsupported instruction:", insn)
 		}
 	}
 
 	return output
+}
+
+func labelIndexes(insns []instruction) map[string]int {
+	m := make(map[string]int)
+	for index, insn := range insns {
+		if len(insn) == 2 && insn[0] == "PROGRAM_POINT" {
+			m[insn[1]] = index + 1
+		}
+	}
+	return m
+}
+
+func readInt(s string) (*big.Int, bool) {
+	return new(big.Int).SetString(s, 10)
 }
 
 func (p *Player) readInput(identifier string) *big.Int {

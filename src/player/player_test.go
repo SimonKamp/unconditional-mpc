@@ -135,7 +135,7 @@ func TestGreaterThanOrEqual(t *testing.T) {
 	}
 }
 
-func TestLessThan(t *testing.T) {
+func TestNotEqual(t *testing.T) {
 	var prime int64 = 5
 	parties := setting(prime, 1, 3)
 
@@ -147,43 +147,15 @@ func TestLessThan(t *testing.T) {
 	}
 	for i := range ids {
 		for j := range ids {
-			id := ids[i] + " < " + ids[j]
+			id := ids[i] + " != " + ids[j]
 			var testResult int64
-			if i < j {
+			if i != j {
 				testResult = 1
 			} else {
 				testResult = 0
 			}
 			for _, party := range parties {
-				go party.LessThan(ids[i], ids[j], id)
-				go party.Open(id)
-			}
-			shouldBe(testResult, parties[1].Reconstruct(id), id, t)
-		}
-	}
-}
-
-func TestLessThanOrEqual(t *testing.T) {
-	var prime int64 = 5
-	parties := setting(prime, 1, 3)
-
-	ids := make([]string, prime)
-	for i := range ids {
-		id := strconv.Itoa(i)
-		parties[1].Share(big.NewInt(int64(i)), id)
-		ids[i] = id
-	}
-	for i := range ids {
-		for j := range ids {
-			id := ids[i] + " <= " + ids[j]
-			var testResult int64
-			if i <= j {
-				testResult = 1
-			} else {
-				testResult = 0
-			}
-			for _, party := range parties {
-				go party.LessThanOrEqual(ids[i], ids[j], id)
+				go party.NotEqual(ids[i], ids[j], id)
 				go party.Open(id)
 			}
 			shouldBe(testResult, parties[1].Reconstruct(id), id, t)
@@ -219,34 +191,6 @@ func TestEqual(t *testing.T) {
 	}
 }
 
-func TestNotEqual(t *testing.T) {
-	var prime int64 = 5
-	parties := setting(prime, 1, 3)
-
-	ids := make([]string, prime)
-	for i := range ids {
-		id := strconv.Itoa(i)
-		parties[1].Share(big.NewInt(int64(i)), id)
-		ids[i] = id
-	}
-	for i := range ids {
-		for j := range ids {
-			id := ids[i] + " != " + ids[j]
-			var testResult int64
-			if i != j {
-				testResult = 1
-			} else {
-				testResult = 0
-			}
-			for _, party := range parties {
-				go party.NotEqual(ids[i], ids[j], id)
-				go party.Open(id)
-			}
-			shouldBe(testResult, parties[1].Reconstruct(id), id, t)
-		}
-	}
-}
-
 func TestRun(t *testing.T) {
 	parties := setting(11, 1, 3)
 
@@ -269,6 +213,26 @@ func TestRun(t *testing.T) {
 	}
 	if output["4*4"].Cmp(big.NewInt(5)) != 0 {
 		t.Errorf("4 * 4 mod 11 should be 5 was %d", output["4*4"])
+	}
+}
+
+func TestRunCompiled(t *testing.T) {
+	parties := setting(11, 1, 3)
+
+	parties[1].scanInput("tests/compiled/input1")
+	parties[2].scanInput("tests/compiled/input2")
+	parties[3].scanInput("tests/compiled/input3")
+
+	parties[1].scanInstructions("tests/compiled/ternary_max")
+	parties[2].scanInstructions("tests/compiled/ternary_max")
+	parties[3].scanInstructions("tests/compiled/ternary_max")
+
+	go parties[1].Run()
+	go parties[2].Run()
+	output := parties[3].Run()
+	// go parties[3].Run()
+	if output["max_input"] == nil {
+		t.Error("Run compiled")
 	}
 }
 
