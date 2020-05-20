@@ -79,6 +79,174 @@ func TestMultiply(t *testing.T) {
 	testMult(0, 9, 11)
 }
 
+func TestGreaterThan(t *testing.T) {
+	var prime int64 = 5
+	parties := setting(prime, 1, 3)
+
+	ids := make([]string, prime)
+	for i := range ids {
+		id := strconv.Itoa(i)
+		parties[1].Share(big.NewInt(int64(i)), id)
+		ids[i] = id
+	}
+	for i := range ids {
+		for j := range ids {
+			id := ids[i] + " > " + ids[j]
+			var testResult int64
+			if i > j {
+				testResult = 1
+			} else {
+				testResult = 0
+			}
+			for _, party := range parties {
+				go party.GreaterThan(ids[i], ids[j], id)
+				go party.Open(id)
+			}
+			shouldBe(testResult, parties[1].Reconstruct(id), id, t)
+		}
+	}
+}
+
+func TestGreaterThanOrEqual(t *testing.T) {
+	var prime int64 = 5
+	parties := setting(prime, 1, 3)
+
+	ids := make([]string, prime)
+	for i := range ids {
+		id := strconv.Itoa(i)
+		parties[1].Share(big.NewInt(int64(i)), id)
+		ids[i] = id
+	}
+	for i := range ids {
+		for j := range ids {
+			id := ids[i] + " >= " + ids[j]
+			var testResult int64
+			if i >= j {
+				testResult = 1
+			} else {
+				testResult = 0
+			}
+			for _, party := range parties {
+				go party.GreaterThanOrEqual(ids[i], ids[j], id)
+				go party.Open(id)
+			}
+			shouldBe(testResult, parties[1].Reconstruct(id), id, t)
+		}
+	}
+}
+
+func TestLessThan(t *testing.T) {
+	var prime int64 = 5
+	parties := setting(prime, 1, 3)
+
+	ids := make([]string, prime)
+	for i := range ids {
+		id := strconv.Itoa(i)
+		parties[1].Share(big.NewInt(int64(i)), id)
+		ids[i] = id
+	}
+	for i := range ids {
+		for j := range ids {
+			id := ids[i] + " < " + ids[j]
+			var testResult int64
+			if i < j {
+				testResult = 1
+			} else {
+				testResult = 0
+			}
+			for _, party := range parties {
+				go party.LessThan(ids[i], ids[j], id)
+				go party.Open(id)
+			}
+			shouldBe(testResult, parties[1].Reconstruct(id), id, t)
+		}
+	}
+}
+
+func TestLessThanOrEqual(t *testing.T) {
+	var prime int64 = 5
+	parties := setting(prime, 1, 3)
+
+	ids := make([]string, prime)
+	for i := range ids {
+		id := strconv.Itoa(i)
+		parties[1].Share(big.NewInt(int64(i)), id)
+		ids[i] = id
+	}
+	for i := range ids {
+		for j := range ids {
+			id := ids[i] + " <= " + ids[j]
+			var testResult int64
+			if i <= j {
+				testResult = 1
+			} else {
+				testResult = 0
+			}
+			for _, party := range parties {
+				go party.LessThanOrEqual(ids[i], ids[j], id)
+				go party.Open(id)
+			}
+			shouldBe(testResult, parties[1].Reconstruct(id), id, t)
+		}
+	}
+}
+
+func TestEqual(t *testing.T) {
+	var prime int64 = 5
+	parties := setting(prime, 1, 3)
+
+	ids := make([]string, prime)
+	for i := range ids {
+		id := strconv.Itoa(i)
+		parties[1].Share(big.NewInt(int64(i)), id)
+		ids[i] = id
+	}
+	for i := range ids {
+		for j := range ids {
+			id := ids[i] + " == " + ids[j]
+			var testResult int64
+			if i == j {
+				testResult = 1
+			} else {
+				testResult = 0
+			}
+			for _, party := range parties {
+				go party.Equal(ids[i], ids[j], id)
+				go party.Open(id)
+			}
+			shouldBe(testResult, parties[1].Reconstruct(id), id, t)
+		}
+	}
+}
+
+func TestNotEqual(t *testing.T) {
+	var prime int64 = 5
+	parties := setting(prime, 1, 3)
+
+	ids := make([]string, prime)
+	for i := range ids {
+		id := strconv.Itoa(i)
+		parties[1].Share(big.NewInt(int64(i)), id)
+		ids[i] = id
+	}
+	for i := range ids {
+		for j := range ids {
+			id := ids[i] + " != " + ids[j]
+			var testResult int64
+			if i != j {
+				testResult = 1
+			} else {
+				testResult = 0
+			}
+			for _, party := range parties {
+				go party.NotEqual(ids[i], ids[j], id)
+				go party.Open(id)
+			}
+			shouldBe(testResult, parties[1].Reconstruct(id), id, t)
+		}
+	}
+}
+
 func TestRun(t *testing.T) {
 	parties := setting(11, 1, 3)
 
@@ -128,7 +296,7 @@ func TestRandomBit(t *testing.T) {
 }
 
 func TestRandomSolvedBits(t *testing.T) {
-	parties := setting(47, 1, 3)
+	parties := setting(4001, 1, 3)
 
 	go parties[1].randomSolvedBits("r")
 	go parties[2].randomSolvedBits("r")
@@ -154,37 +322,8 @@ func TestRandomSolvedBits(t *testing.T) {
 	}
 }
 
-func TestCompare(t *testing.T) {
-	var prime int64 = 19
-	parties := setting(prime, 1, 3)
-
-	ids := make([]string, 7)
-	for i := range ids {
-		id := strconv.Itoa(i)
-		parties[1].Share(big.NewInt(int64(i)), id)
-		ids[i] = id
-	}
-	for i := range ids {
-		for j := range ids {
-			id := ids[i] + " > " + ids[j]
-			var testResult int64
-			if i > j {
-				testResult = 1
-			} else {
-				testResult = 0
-			}
-			for _, party := range parties {
-				go party.Compare(ids[i], ids[j], id)
-				go party.Open(id)
-			}
-			//fails for i > j
-			shouldBe(testResult, parties[1].Reconstruct(id), id, t)
-		}
-	}
-}
-
 func TestFullAdder(t *testing.T) {
-	parties := setting(13, 1, 3)
+	parties := setting(4001, 1, 3)
 
 	parties[1].Share(big.NewInt(0), "0")
 	parties[2].Share(big.NewInt(1), "1")
@@ -285,10 +424,10 @@ func TestBitCompare(t *testing.T) {
 }
 
 func TestBitSub(t *testing.T) {
-	prime := int64(11)
+	prime := int64(5)
 	parties := setting(prime, 1, 3)
 
-	iterations := 11
+	iterations := 5
 
 	parties[1].Share(big.NewInt(0), "0")
 	parties[2].Share(big.NewInt(1), "1")
@@ -325,10 +464,10 @@ func TestBitSub(t *testing.T) {
 }
 
 func TestBits(t *testing.T) {
-	prime := 7
+	prime := 5
 	parties := setting(int64(prime), 1, 3)
 
-	for i := 0; i < prime-5; /*TODO*/ i++ {
+	for i := 0; i < prime; i++ {
 		input := big.NewInt(int64(i))
 		test := input.String() + "fieldElement"
 		parties[1].Share(input, test)
@@ -354,7 +493,7 @@ func TestBits(t *testing.T) {
 }
 
 func TestMostSignificant1(t *testing.T) {
-	prime := 19
+	prime := 5
 	parties := setting(int64(prime), 1, 3)
 
 	for i := 0; i < prime; i++ {

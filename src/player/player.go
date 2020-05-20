@@ -339,8 +339,8 @@ func (p *Player) recombineMultiplicationShares(cID string, shares []multiplicati
 	p.setShareValue(cID, cShareValue, true)
 }
 
-//Compare takes shares of aShare and b as input and outputs 1 iff aShare > b
-func (p *Player) Compare(aID, bID, cID string) {
+//GreaterThan takes shares of aShare and b as input and outputs 1 iff a > b, and 0 otherwise
+func (p *Player) GreaterThan(aID, bID, cID string) {
 
 	//compute sharings of bits of aShare and b:
 	aBitIDs := make([]string, p.l+1)
@@ -355,6 +355,45 @@ func (p *Player) Compare(aID, bID, cID string) {
 	p.bits(bID, bBitIDs)
 
 	p.bitCompare(aBitIDs, bBitIDs, cID)
+}
+
+//GreaterThanOrEqual takes shares of aShare and b as input and outputs 1 iff a >= b, and 0 otherwise
+func (p *Player) GreaterThanOrEqual(aID, bID, cID string) {
+	bGreaterThanAID := cID + "_GreaterThanOrEqual_b>a"
+	p.GreaterThan(bID, aID, bGreaterThanAID)
+	p.SubFromConstant(big.NewInt(1), bGreaterThanAID, cID)
+}
+
+//LessThan takes shares of aShare and b as input and outputs 1 iff a < b, and 0 otherwise
+func (p *Player) LessThan(aID, bID, cID string) {
+	p.GreaterThan(bID, aID, cID)
+}
+
+//LessThanOrEqual takes shares of aShare and b as input and outputs 1 iff a <= b, and 0 otherwise
+func (p *Player) LessThanOrEqual(aID, bID, cID string) {
+	aGreaterThanBID := cID + "_LessThanOrEqual_a>b"
+	p.GreaterThan(aID, bID, aGreaterThanBID)
+	p.SubFromConstant(big.NewInt(1), aGreaterThanBID, cID)
+}
+
+//NotEqual takes shares of aShare and b as input and outputs 1 iff a != b, and 0 otherwise
+func (p *Player) NotEqual(aID, bID, cID string) {
+	//todo temporary solution, should use Fermats little thm. and repeated squaring
+	aGreaterThanBID := cID + "_NotEqual_a>b"
+	p.GreaterThan(aID, bID, aGreaterThanBID)
+	bGreaterThanAID := cID + "_NotEqual_b>a"
+	p.GreaterThan(bID, aID, bGreaterThanAID)
+	//sum is either
+	//1 if one is greater than the other
+	//0 if a == b
+	p.Add(aGreaterThanBID, bGreaterThanAID, cID)
+}
+
+//Equal takes shares of aShare and b as input and outputs 1 iff a == b, and 0 otherwise
+func (p *Player) Equal(aID, bID, cID string) {
+	notEqualID := cID + "_Equal_tmp"
+	p.NotEqual(aID, bID, notEqualID)
+	p.SubFromConstant(big.NewInt(1), notEqualID, cID)
 }
 
 //For debugging
