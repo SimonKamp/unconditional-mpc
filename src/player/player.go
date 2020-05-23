@@ -477,6 +477,20 @@ func (p *Player) bitXor(aBitID, bBitID, cBitID string) *big.Int {
 	return xorShare
 }
 
+func (p *Player) bitOr(aBitID, bBitID, cBitID string) *big.Int {
+	p.Multiply(aBitID, bBitID, cBitID+"_or_tmp")
+	aShare, aIsSecret := p.getShareValue(aBitID)
+	bShare, bIsSecret := p.getShareValue(bBitID)
+	orShare, _ := p.getShareValue(cBitID + "_or_tmp") //ab
+	orShare.Neg(orShare)                              //-ab
+	orShare.Add(orShare, aShare)                      //a - ab
+	orShare.Add(orShare, bShare)                      //a + b - ab
+
+	p.setShareValue(cBitID, orShare, aIsSecret || bIsSecret)
+
+	return orShare
+}
+
 func (p *Player) fullAdder(aBitID, bBitID, carryInBitID, carryOutBitID, cBitID string) {
 	//carry_out = (a & b) | (a & carry_in) | (b & carry_in)
 	//			= ! (!(a & b) & !(a & carry_in) & !(b & carry_in))
@@ -830,6 +844,11 @@ PLUS [value] [value] [id]
 MINUS [value] [value] [id]
 MULTIPLY [value] [value] [id]
 
+AND [value] [value] [id]
+OR [value] [value] [id]
+XOR [value] [value] [id]
+NOT [value] [id]
+
 EQUALS [value] [value] [id]
 NOT_EQUALS [value] [value] [id]
 GT [value] [value] [id]
@@ -927,6 +946,69 @@ func (p *Player) Run() map[string]*big.Int {
 				continue
 			}
 			p.Multiply(insn[1], insn[2], insn[3])
+		case "AND":
+			// AND [value] [value] [id]
+			constant, isNumber := readInt(insn[1])
+			nonConstArg := 2
+			if !isNumber {
+				constant, isNumber = readInt(insn[2])
+				nonConstArg = 1
+			}
+			if isNumber {
+				if constant.Sign() == 0 {
+					p.setShareValue(insn[3], big.NewInt(0), false)
+				} else {
+					val, isSecret := p.getShareValue(insn[nonConstArg])
+					p.setShareValue(insn[3], val, isSecret)
+				}
+				continue
+			}
+			p.Multiply(insn[1], insn[2], insn[3])
+		case "OR":
+			// OR [value] [value] [id]
+			constant, isNumber := readInt(insn[1])
+			nonConstArg := 2
+			if !isNumber {
+				constant, isNumber = readInt(insn[2])
+				nonConstArg = 1
+			}
+			if isNumber {
+				if constant.Sign() == 1 {
+					p.setShareValue(insn[3], big.NewInt(1), false)
+				} else {
+					val, isSecret := p.getShareValue(insn[nonConstArg])
+					p.setShareValue(insn[3], val, isSecret)
+				}
+				continue
+			}
+			p.bitOr(insn[1], insn[2], insn[3])
+		case "XOR":
+			// XOR [value] [value] [id]
+			constant, isNumber := readInt(insn[1])
+			nonConstArg := 2
+			if !isNumber {
+				constant, isNumber = readInt(insn[2])
+				nonConstArg = 1
+			}
+			if isNumber {
+				val, isSecret := p.getShareValue(insn[nonConstArg])
+				if constant.Sign() == 0 {
+					p.setShareValue(insn[3], val, isSecret)
+				} else {
+					p.setShareValue(insn[3], bitNot(val), isSecret)
+				}
+				continue
+			}
+			p.bitXor(insn[1], insn[2], insn[3])
+		case "NOT":
+			// NOT [value] [id]
+			constant, isNumber := readInt(insn[1])
+			if isNumber {
+				p.setShareValue(insn[2], bitNot(constant), false)
+				continue
+			}
+			val, isSecret := p.getShareValue(insn[1])
+			p.setShareValue(insn[2], bitNot(val), isSecret)
 		case "GT":
 			// GT [value] [value] [id]
 			constant, isNumber := readInt(insn[1])
@@ -1029,6 +1111,15 @@ func (p *Player) Run() map[string]*big.Int {
 		case "PROGRAM_POINT":
 			// PRORGAM_POINT [value]
 			continue
+		case "LEAK":
+			// LEAK [id] [id]
+			constant, isNumber := readInt(insn[1])
+			if isNumber {
+				p.setShareValue(insn[2], constant, false)
+				continue
+			}
+			p.Open(insn[1])
+			p.setShareValue(insn[2], p.Reconstruct(insn[1]), false)
 		case "JMP":
 			// JMP [label]
 			instructionIndex = labels[insn[1]]
