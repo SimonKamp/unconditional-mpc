@@ -655,36 +655,8 @@ func (p *Player) RandomBit(identifier string) {
 	for {
 		iterationIdentifier := identifier + "_iteration_" + strconv.Itoa(iteration)
 		//generate random field element
-		localRandomFieldElement, _ := rand.Int(rand.Reader, p.prime)
-		points := p.ss.Share(localRandomFieldElement)
-		for _, point := range points {
-			share := localRandomFieldElementShare{
-				point: point,
-				id:    iterationIdentifier,
-				index: p.index,
-			}
-			p.Send(share, point.X)
-		}
-		//Add at least t+1 shares to have randomness
-		//in the passive corruption model we add all n shares
-		//to avoid having to agree on which t+1 shares
-		time.Sleep(time.Millisecond)
-		p.randomBitLock.RLock()
-		shares := p.randFieldElemShares[iterationIdentifier]
-		p.randomBitLock.RUnlock()
-		for len(shares) < p.n {
-			//todo seems like the time to use sync.Waitgroup
-			time.Sleep(time.Millisecond)
-			p.randomBitLock.RLock()
-			shares = p.randFieldElemShares[iterationIdentifier]
-			p.randomBitLock.RUnlock()
-		}
-		aShare = big.NewInt(0)
-		for _, share := range shares {
-			aShare.Add(aShare, share.point.Y)
-		}
-		aShare.Mod(aShare, p.prime)
-
+		p.RandomElement(iterationIdentifier)
+		aShare, _ = p.getShareValue(iterationIdentifier)
 		//Compute A = a^2
 		aSquaredShareVal := new(big.Int).Mul(aShare, aShare)
 		//suffices to multiply locally as we are immediately reconstructing
@@ -737,6 +709,41 @@ func (p *Player) RandomBit(identifier string) {
 	r.Mod(r, p.prime)
 
 	p.setShareValue(identifier, r, true)
+}
+
+func (p *Player) RandomElement(id string) {
+	//todo
+	localRandomFieldElement, _ := rand.Int(rand.Reader, p.prime)
+	points := p.ss.Share(localRandomFieldElement)
+	for _, point := range points {
+		share := localRandomFieldElementShare{
+			point: point,
+			id:    id,
+			index: p.index,
+		}
+		p.Send(share, point.X)
+	}
+
+	//Add at least t+1 shares to have randomness
+	//in the passive corruption model we add all n shares
+	//to avoid having to agree on which t+1 shares
+	time.Sleep(time.Millisecond)
+	p.randomBitLock.RLock()
+	shares := p.randFieldElemShares[id]
+	p.randomBitLock.RUnlock()
+	for len(shares) < p.n {
+		time.Sleep(time.Millisecond)
+		p.randomBitLock.RLock()
+		shares = p.randFieldElemShares[id]
+		p.randomBitLock.RUnlock()
+	}
+	randomFieldElementShare := big.NewInt(0)
+	for _, share := range shares {
+		randomFieldElementShare.Add(randomFieldElementShare, share.point.Y)
+	}
+	randomFieldElementShare.Mod(randomFieldElementShare, p.prime)
+
+	p.setShareValue(id, randomFieldElementShare, true)
 }
 
 func (p *Player) mostSignificant1(bitIds []string) (resBitIds []string) {
@@ -856,13 +863,14 @@ GTE [value] [value] [id]
 LT [value] [value] [id]
 LTE [value] [value] [id]
 
-LEAK [id] [id] ###################################### not implemented
+LEAK [id] [id]
 
 PROGRAM_POINT [number]
 JMP [number]
 JZ [value] [number]
 
-RANDOM_BIT [id] ###################################### Expose??
+RANDOM_BIT [id]
+RANDOM [id] ###################################### NOT IMPLEMENTED
 */
 func (p *Player) Run() map[string]*big.Int {
 	output := make(map[string]*big.Int)
@@ -1105,9 +1113,6 @@ func (p *Player) Run() map[string]*big.Int {
 				continue
 			}
 			p.NotEqual(insn[1], insn[2], insn[3])
-		case "RANDOM_BIT":
-			// RANDOM_BIT [id]
-			p.RandomBit(insn[1])
 		case "PROGRAM_POINT":
 			// PRORGAM_POINT [value]
 			continue
@@ -1140,6 +1145,12 @@ func (p *Player) Run() map[string]*big.Int {
 			if constant.Sign() == 0 {
 				instructionIndex = labels[insn[2]]
 			}
+		case "RANDOM_BIT":
+			// RANDOM_BIT [id]
+			p.RandomBit(insn[1])
+		case "RANDOM":
+			// RANDOM [id]
+			p.RandomElement(insn[1])
 		default:
 			fmt.Println("Unsupported instruction:", insn)
 		}
