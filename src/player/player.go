@@ -14,6 +14,7 @@ import (
 
 	"../bigshamir"
 	"../network"
+	"../network/localnetwork"
 )
 
 //Player runs the protocol
@@ -1136,4 +1137,29 @@ func (p *Player) scanInstructions(path string) {
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+//LocalSetup assumes input path is followed by each party's index
+func LocalSetup(prime int64, threshold, n int, programPath, inputPath string) map[int]*Player {
+	parties := make(map[int]*Player, n)
+	handlers := make([]network.Handler, n)
+	for i := range handlers {
+		party := NewPlayer(prime, threshold, n, i+1)
+		if programPath != "" {
+			party.scanInstructions(programPath)
+		}
+		if inputPath != "" {
+			party.scanInput(inputPath + strconv.Itoa(party.index))
+		}
+		parties[i+1] = party
+		handlers[i] = party
+	}
+
+	for _, party := range parties {
+		ln := new(localnetwork.Localnetwork)
+		ln.RegisterHandler(party)
+		ln.SetConnections(handlers...)
+	}
+
+	return parties
 }

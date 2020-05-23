@@ -192,15 +192,9 @@ func TestEqual(t *testing.T) {
 }
 
 func TestRun(t *testing.T) {
-	parties := setting(11, 1, 3)
-
-	parties[1].scanInput("tests/test1/input1")
-	parties[2].scanInput("tests/test1/input2")
-	parties[3].scanInput("tests/test1/input3")
-
-	parties[1].scanInstructions("tests/test1/sourcefile")
-	parties[2].scanInstructions("tests/test1/sourcefile")
-	parties[3].scanInstructions("tests/test1/sourcefile")
+	parties := LocalSetup(11, 1, 3,
+		"tests/test1/prog",
+		"tests/test1/input")
 
 	go parties[1].Run()
 	go parties[2].Run()
@@ -217,15 +211,9 @@ func TestRun(t *testing.T) {
 }
 
 func TestRunCompiled(t *testing.T) {
-	parties := setting(11, 1, 3)
-
-	parties[1].scanInput("tests/compiled/input1")
-	parties[2].scanInput("tests/compiled/input2")
-	parties[3].scanInput("tests/compiled/input3")
-
-	parties[1].scanInstructions("tests/compiled/ternary_max")
-	parties[2].scanInstructions("tests/compiled/ternary_max")
-	parties[3].scanInstructions("tests/compiled/ternary_max")
+	parties := LocalSetup(11, 1, 3,
+		"tests/compiled/prog",
+		"tests/compiled/input")
 
 	go parties[1].Run()
 	go parties[2].Run()
