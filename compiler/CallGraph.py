@@ -1,4 +1,4 @@
-import ASTnodes
+from compiler import ASTnodes
 
 
 class CallGraphNode:

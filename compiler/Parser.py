@@ -1,9 +1,6 @@
-import ply.yacc as yacc
-from Lexer import tokens
-import Lexer
-import ply.lex as lex
-import ASTnodes
-from HelperFunctions import list_from_functional_list
+from compiler import ASTnodes
+from compiler.Lexer import tokens
+from compiler.HelperFunctions import list_from_functional_list
 
 
 # A program is a list of functions

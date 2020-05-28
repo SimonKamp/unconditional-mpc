@@ -1,6 +1,3 @@
-from HelperFunctions import type_string
-
-
 class Program:
     def __init__(self, funcs, prime = None):
         self.funcs = funcs

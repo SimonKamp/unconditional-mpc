@@ -1,6 +1,6 @@
-import ASTnodes
-from copy import deepcopy, copy
-from CallGraph import CallGraph
+from compiler import ASTnodes
+from copy import deepcopy
+from compiler.CallGraph import CallGraph
 
 
 class ASTworker:

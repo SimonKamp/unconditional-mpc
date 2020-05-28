@@ -1,8 +1,7 @@
 import ply.lex as lex
 import ply.yacc as yacc
-import Lexer
-import Parser
-from ASTmanipulations import ASTworker
+from compiler import Lexer, Parser
+from compiler.ASTmanipulations import ASTworker
 
 
 def compile_program(prog):
