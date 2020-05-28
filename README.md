@@ -14,7 +14,7 @@ python -m pip install ply
 ```
 
 # Running compiler
-To compile a program on, the general command is:
+To compile a program, the general command is:
 ```bash
 python compile_script.py input_path -o output_path
 ```
