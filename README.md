@@ -8,8 +8,24 @@ It contains a runtime, written in Golang, which allows several parties to run th
 # Installation
 First install Python and Go, and clone repository.
 
-To run the compiler, the package 'ply' must be installed by running one of the following commands:
+To run the compiler, the package 'ply' must be installed (first install pip, if not done already):
 ```bash
-pip install ply
 python -m pip install ply
 ```
+
+# Running compiler
+To compile a program on, the general command is:
+```bash
+python compile_script.py input_path -o output_path
+```
+To test that this works, try running the following:
+```bash
+python compile_script.py example_programs/input.txt -o instructions.txt
+```
+This should result in the following appearing in instructions.txt:
+
+```txt
+# SET_PRIME 31
+INPUT 1 a
+OUTPUT a out
+´´´
