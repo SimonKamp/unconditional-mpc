@@ -29,3 +29,6 @@ This should result in the following appearing in instructions.txt:
 INPUT 1 a
 OUTPUT a out
 ´´´
+
+# Language guide
+For a specification of the source language used for writing programs to the compiler, please see the project report pdf.
