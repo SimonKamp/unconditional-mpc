@@ -1,4 +1,6 @@
 main() {
-    a << 1 : bool;
-    a >> out;
+    a << 1 : num;
+    b << 2 : num;
+    sum = a + b;
+    sum >> output;
 }

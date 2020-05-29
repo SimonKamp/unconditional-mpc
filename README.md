@@ -25,9 +25,10 @@ python compile_script.py example_programs/input.txt -o instructions.txt
 This should result in the following appearing in instructions.txt:
 
 ```txt
-# SET_PRIME 31
 INPUT 1 a
-OUTPUT a out
+INPUT 2 b
+PLUS a b sum
+OUTPUT sum output
 ```
 
 # Language guide
