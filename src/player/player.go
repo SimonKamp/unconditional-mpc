@@ -37,7 +37,7 @@ type Player struct {
 	//Concurrently accessed:
 	//Regular shares
 	shareLock             sync.RWMutex
-	idVals                map[string]*big.Int //todo consider using sync.Map
+	idVals                map[string]*big.Int
 	idValBlockingChannels map[string][]chan *big.Int
 	secrets               map[string]bool //subset of values
 
@@ -541,7 +541,6 @@ func (p *Player) bitAdd(aBitIDs, bBitIDs, resBitIDs []string) {
 		len(aBitIDs) != p.bitLength ||
 		len(resBitIDs) != p.bitLength { //todo + 1
 		panic("bit add different lengths")
-		return
 	}
 
 	for i := range resBitIDs {
@@ -565,7 +564,6 @@ func (p *Player) bitAdd(aBitIDs, bBitIDs, resBitIDs []string) {
 func (p *Player) bitSub(aBitIDs, bBitIDs, resBitIDs []string) {
 	if len(aBitIDs) != len(bBitIDs) || len(aBitIDs) != len(resBitIDs) {
 		panic("bit add different lengths")
-		return
 	}
 	flippedBBitIDs := make([]string, len(bBitIDs))
 	for i := range flippedBBitIDs {
@@ -870,7 +868,7 @@ JMP [number]
 JZ [value] [number]
 
 RANDOM_BIT [id]
-RANDOM [id] ###################################### NOT IMPLEMENTED
+RANDOM [id]
 */
 func (p *Player) Run() map[string]*big.Int {
 	output := make(map[string]*big.Int)
@@ -1131,7 +1129,7 @@ func (p *Player) Run() map[string]*big.Int {
 		case "JZ":
 			// JZ [value] [label]
 			constant, isNumber := readInt(insn[1])
-			if isNumber { // TODO  ########################################## Can value ever be constant?
+			if isNumber {
 				if constant.Sign() == 0 {
 					instructionIndex = labels[insn[2]]
 				} else {
@@ -1191,7 +1189,11 @@ func (p *Player) setInput(inputValues map[string]*big.Int) {
 func (p *Player) scanInput(path string) {
 	file, err := os.Open(path)
 	if err != nil {
-		log.Fatal(err)
+		if os.IsExist(err) {
+			log.Fatal(err)
+		} else {
+			return
+		}
 	}
 	defer file.Close()
 

@@ -105,16 +105,19 @@ func TestMul(t *testing.T) {
 	fun(aSquaredShares, aSquaredShares) //7^4 % 11 = 3
 	fun(bSquaredShares, bSquaredShares) //9^4 % 11 = 5
 	fun(aSquaredShares, bSquaredShares) //7^2 * 9^2 % 11 = 9
-	fun(aTimesBShares, aTimesBShares) //7^2 * 9^2 % 11 = 9
+	fun(aTimesBShares, aTimesBShares)   //7^2 * 9^2 % 11 = 9
 }
 
-
 func TestRecombinationVector(t *testing.T) {
-	r := RecombinationVector(big.NewInt(11), 3, 4, 5)
+	r := recombinationVector(big.NewInt(11), 3, 4, 5)
 	test := func(index int, rIndex int64) {
 		rI, contains := r[index]
-		if !contains {t.Errorf("Does not contain r%d", index)}
-		if rI.Int64() != rIndex {t.Errorf("r%d should be %d was %d", index, rIndex, rI.Int64())}
+		if !contains {
+			t.Errorf("Does not contain r%d", index)
+		}
+		if rI.Int64() != rIndex {
+			t.Errorf("r%d should be %d was %d", index, rIndex, rI.Int64())
+		}
 	}
 	test(3, 10)
 	test(4, 7)
