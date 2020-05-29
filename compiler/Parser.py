@@ -5,16 +5,9 @@ from compiler.HelperFunctions import list_from_functional_list
 
 # A program is a list of functions
 def p_prog(p):
-    """prog : funcs
-            | HASHTAG ID NUMBER funcs"""
-    if len(p) == 2:
-        p[0] = ASTnodes.Program(funcs=list_from_functional_list(p[1]))
-    else:
-        if p[2] != 'SET_PRIME':
-            print("ERROR!!")
-            raise SyntaxError
-        p[0] = ASTnodes.Program(funcs=list_from_functional_list(p[4]),
-                                prime=p[3])
+    """prog : funcs"""
+    p[0] = ASTnodes.Program(funcs=list_from_functional_list(p[1]))
+
 
 
 def p_funcs(p):

@@ -37,7 +37,6 @@ tokens = [
              'LSQBRACKET',
              'RSQBRACKET',
              'COLON',
-             'HASHTAG',
              'SEMICOLON',
              'COMMA',
              'ID'
@@ -67,7 +66,6 @@ t_RBRACE = r'\}'
 t_LSQBRACKET = r'\['
 t_RSQBRACKET = r'\]'
 t_COLON = r':'
-t_HASHTAG = r'\#'
 t_SEMICOLON = r';'
 t_COMMA = r','
 

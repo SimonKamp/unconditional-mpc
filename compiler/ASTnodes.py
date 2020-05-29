@@ -1,7 +1,6 @@
 class Program:
-    def __init__(self, funcs, prime = None):
+    def __init__(self, funcs):
         self.funcs = funcs
-        self.prime = prime
 
     def __str__(self):
         return '(PROGRAM, [%s])' % ', '.join([str(elem) for elem in self.funcs])
