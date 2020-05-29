@@ -1,0 +1,21 @@
+main() {
+    a << 1 : num;
+    b << 2 : num;
+    c << 3 : num;
+    max = find_max(a, b, c);
+    max >> max_output;
+}
+
+find_max(a, b, c) {
+    max = if (a < b) {
+        b
+    } else {
+        a
+    };
+    max = if (max < c) {
+        c
+    } else {
+        max
+    };
+    max
+}

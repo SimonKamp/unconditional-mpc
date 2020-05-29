@@ -984,8 +984,6 @@ class ASTworker:
 
     def emit_instructions(self):
         instructions = []
-        if self.prog.prime is not None:
-            instructions.append("# SET_PRIME %d" % self.prog.prime)
         main = self.func_dict['main']
         for stm in main.body.stms:
             instructions.append(self.translate_instruction(stm))

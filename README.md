@@ -8,7 +8,8 @@ It contains a runtime, written in Golang, which allows several parties to run th
 # Installation
 First install Python and Go, and clone repository.
 
-To run the compiler, the package 'ply' must be installed (first install pip, if not done already):
+To run the compiler, the package 'ply' must be installed. 
+First install pip, if not done already. Then run the following:
 ```bash
 python -m pip install ply
 ```
@@ -25,9 +26,10 @@ python compile_script.py example_programs/input.txt -o instructions.txt
 This should result in the following appearing in instructions.txt:
 
 ```txt
-# SET_PRIME 31
 INPUT 1 a
-OUTPUT a out
+INPUT 2 b
+PLUS a b sum
+OUTPUT sum output
 ```
 
 # Language guide
