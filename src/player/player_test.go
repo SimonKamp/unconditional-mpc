@@ -219,7 +219,7 @@ func TestRunCompiled(t *testing.T) {
 	go parties[2].Run()
 	output := parties[3].Run()
 	// go parties[3].Run()
-	if output["max_input"] == nil {
+	if output["max_output"] == nil {
 		t.Error("Run compiled")
 	}
 }
