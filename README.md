@@ -31,7 +31,7 @@ INPUT 2 b
 PLUS a b sum
 OUTPUT sum output
 ```
-
+# Using the runtime
 For each party that provides an input to the protocol, the input must be stored in a file of the format:
 
 ```txt
