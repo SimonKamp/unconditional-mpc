@@ -3,12 +3,12 @@ INPUT 2 b
 INPUT 3 c
 LT a b _tmp1
 MULTIPLY _tmp1 b _tmp3
-MINUS 1 _tmp1 _tmp4
-MULTIPLY _tmp4 a _tmp5
-PLUS _tmp3 _tmp5 _find_max_1_max
+MINUS 1 _tmp1 _tmp5
+MULTIPLY _tmp5 a _tmp4
+PLUS _tmp3 _tmp4 _find_max_1_max
 LT _find_max_1_max c _tmp2
 MULTIPLY _tmp2 c _tmp6
-MINUS 1 _tmp2 _tmp7
-MULTIPLY _tmp7 _find_max_1_max _tmp8
-PLUS _tmp6 _tmp8 _find_max_1__max_1
-OUTPUT _find_max_1__max_1 max_input
+MINUS 1 _tmp2 _tmp8
+MULTIPLY _tmp8 _find_max_1_max _tmp7
+PLUS _tmp6 _tmp7 _find_max_1__max_1
+OUTPUT _find_max_1__max_1 max_output
