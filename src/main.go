@@ -74,6 +74,10 @@ func main() {
 	programPath := directory + "prog"
 	inputPath := directory + "input"
 	configPath := directory + "config"
+	if len(os.Args) == 3 {
+		programPath = os.Args[1]
+		inputPath = os.Args[2]
+	}
 	if len(os.Args) == 4 {
 		programPath = os.Args[1]
 		inputPath = os.Args[2]
