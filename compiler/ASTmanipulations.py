@@ -730,7 +730,6 @@ class ASTworker:
                 raise SyntaxError
             # Else, it is an AssignStm
             if stm.is_if_result_assign:
-                print("If result assign: %s" % stm.readable_str())
                 stm.expr = self.eval_expr(stm.expr, values)
                 stms.append(stm)    # Necessary to do this statement
                 values[stm.var.name] = Value(is_constant=False)
@@ -915,7 +914,6 @@ class ASTworker:
                 return ASTnodes.Boolean(not sub_expr_value.value)
             return expr
         if isinstance(expr, ASTnodes.Binop):
-            print("Evaluating expr: %s" % expr.readable_str())
             expr.left = self.eval_expr(expr.left, values)
             expr.right = self.eval_expr(expr.right, values)
             if isinstance(expr.left, ASTnodes.Number) or isinstance(expr.left, ASTnodes.Boolean):
