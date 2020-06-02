@@ -1,0 +1,23 @@
+main() {
+    a << 1 : num;
+    b << 2 : num;
+    c << 3 : bool;
+    d = b + 2 * 3;
+    e = if (c) {
+        d == 7
+    } else {
+        true || c
+    };
+    f = leak e;
+    g = if (!e) {
+        foo(a)
+    } else {
+        foo(d)
+    };
+    g >> out;
+}
+
+foo(x) {
+    x = x * x;
+    x * (-2)
+}

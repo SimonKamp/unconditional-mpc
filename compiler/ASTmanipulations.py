@@ -231,7 +231,7 @@ class ASTworker:
                       "should have subexpression of type NUMBER." % (expr.lineno,
                                                                      expr.readable_str()))
                 return False
-            if isinstance(expr, ASTnodes.Not) and expr.sub_expr.type != 'bool' and annotating_for_xor:
+            if isinstance(expr, ASTnodes.Not) and expr.sub_expr.type != 'bool' and not annotating_for_xor:
                 print("ERROR in line %d: Not-expression '%s' "
                       "should have subexpression of type BOOLEAN." % (expr.lineno,
                                                                       expr.readable_str()))
