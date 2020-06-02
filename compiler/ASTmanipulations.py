@@ -430,16 +430,17 @@ class ASTworker:
             for arg in expr.args:
                 self.expr_change_reused_var_names(arg, var_names)
 
-    def smart_inline_program(self):
+    def smart_inline_program(self, verbose=False):
         body = self.func_smart_inline('main', {})
         main = ASTnodes.Function(id=ASTnodes.Identifier('main'),
                                  args=[],
                                  body=ASTnodes.FunctionBody(body.stms, body.expr))
         self.prog.funcs = [main]
         self.func_dict = {'main': main}
-        print('-------------------------------------')
-        print('Program before if and bodyExp rewrite:')
-        print(self.prog.readable_str())
+        if verbose:
+            print('-------------------------------------')
+            print('Program before if and bodyExp rewrite:')
+            print(self.prog.readable_str())
         self.rewrite_ifs_and_remove_body_exprs()
 
     def func_smart_inline(self, func_name, var_values):

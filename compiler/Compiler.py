@@ -196,7 +196,7 @@ def compile_program_with_prints(prog):
     print('Changed reused variable names:')
     print(ast_worker.prog.readable_str())
 
-    ast_worker.smart_inline_program()
+    ast_worker.smart_inline_program(verbose=True)
     print('-----------------------------------------')
     print('Smart inline:')
     print(ast_worker.prog.readable_str())
