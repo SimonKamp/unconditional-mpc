@@ -266,7 +266,7 @@ class IfResultId:
         return "(IF-RESULT, %s)" % self.name
 
     def readable_str(self):
-        return "%s (if-result)" % self.name
+        return "%s" % self.name
 
 
 class ProgramPoint:

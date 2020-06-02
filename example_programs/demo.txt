@@ -9,7 +9,7 @@ main() {
         true || c
     };
     f = leak e;
-    g = if (!e) {
+    g = if (!f) {
         foo(a)
     } else {
         foo(d)
