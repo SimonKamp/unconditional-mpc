@@ -188,7 +188,7 @@ class ASTworker:
         if isinstance(stm, ASTnodes.ProgramPoint) or \
                 isinstance(stm, ASTnodes.JumpIfFalseStm) or \
                 isinstance(stm, ASTnodes.JumpUnconditionalStm):
-            return
+            return True
         if isinstance(stm, ASTnodes.OutputStm):
             return True
         if isinstance(stm, ASTnodes.InputStm):

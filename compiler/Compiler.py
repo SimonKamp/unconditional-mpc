@@ -90,6 +90,7 @@ def compile_program(prog):
     instructions = ast_worker.emit_instructions()
     return instructions
 
+
 def compile_program_with_prints(prog):
     """Compilation process:
     1. Lex/Parse, and get the AST
@@ -210,12 +211,11 @@ def compile_program_with_prints(prog):
     print('Constant propagation:')
     print(ast_worker.prog.readable_str())
 
-    ast_worker.type_check_bool_num()
+    ast_worker.type_check_bool_num(annotating_for_xor=True)
     ast_worker.introduce_xor()
     print('-----------------------------------------')
     print('Introduced XOR:')
     print(ast_worker.prog.readable_str())
-
 
     instructions = ast_worker.emit_instructions()
     print('-----------------------------------------')
